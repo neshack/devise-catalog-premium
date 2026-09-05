@@ -6,7 +6,13 @@ CREATE TABLE IF NOT EXISTS files(id INTEGER PRIMARY KEY, dir_id INTEGER NOT NULL
 CREATE INDEX IF NOT EXISTS idx_files_ext_size ON files(ext, size);
 CREATE INDEX IF NOT EXISTS idx_files_blake3 ON files(blake3);
 CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(name, ext, content='', contentless_delete=1, tokenize='unicode61');
-CREATE TRIGGER IF NOT EXISTS files_ai AFTER INSERT ON files BEGIN INSERT INTO files_fts(rowid, name, ext) VALUES (new.id, new.name, new.ext); END;
-CREATE TRIGGER IF NOT EXISTS files_ad AFTER DELETE ON files BEGIN INSERT INTO files_fts(files_fts, rowid, name, ext) VALUES('delete', old.id, old.name, old.ext); END;
+DROP TRIGGER IF EXISTS files_ai;
+CREATE TRIGGER files_ai AFTER INSERT ON files BEGIN INSERT INTO files_fts(rowid, name, ext) VALUES (new.id, new.name, new.ext); END;
+DROP TRIGGER IF EXISTS files_ad;
+CREATE TRIGGER files_ad AFTER DELETE ON files BEGIN DELETE FROM files_fts WHERE rowid = old.id; END;
+DROP TRIGGER IF EXISTS files_au;
+CREATE TRIGGER files_au AFTER UPDATE ON files BEGIN DELETE FROM files_fts WHERE rowid = old.id; INSERT INTO files_fts(rowid, name, ext) VALUES (new.id, new.name, new.ext); END;
 CREATE TABLE IF NOT EXISTS thumbs(file_id INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE, webp128 BLOB);
 CREATE TABLE IF NOT EXISTS scan_errors(id INTEGER PRIMARY KEY, volume_id INTEGER NOT NULL REFERENCES volumes(id) ON DELETE CASCADE, path TEXT NOT NULL, reason TEXT NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dirs_vol_pathhash ON dirs(volume_id, path_hash);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_files_vol_dir_name ON files(volume_id, dir_id, name);

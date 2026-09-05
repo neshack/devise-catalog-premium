@@ -25,7 +25,9 @@ fn bench_search(c: &mut Criterion) {
                     &core_db::ParsedQuery {
                         fts: "song*".into(),
                         ext: Some("mp3".into()),
+                        exts: Vec::new(),
                         min_size: None,
+                        max_size: None,
                         volume: None,
                     },
                     50,

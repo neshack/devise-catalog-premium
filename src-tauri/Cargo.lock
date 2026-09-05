@@ -372,6 +372,7 @@ version = "0.1.0"
 dependencies = [
  "core-db",
  "core-export",
+ "core-hash",
  "core-scanner",
  "serde",
  "serde_json",

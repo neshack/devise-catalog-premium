@@ -39,7 +39,9 @@ fn insert_and_search_by_ext() {
             &ParsedQuery {
                 fts: "song".into(),
                 ext: Some("mp3".into()),
+                exts: Vec::new(),
                 min_size: None,
+                max_size: None,
                 volume: None,
             },
             50,

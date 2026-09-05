@@ -14,6 +14,13 @@ pub struct Volume {
     pub serial: String,
 }
 
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct VolumeInfo {
+    pub label: String,
+    pub serial: String,
+    pub indexed_at: Option<i64>,
+}
+
 #[derive(Debug)]
 pub struct NewFile {
     pub dir_id: i64,
@@ -32,7 +39,9 @@ pub struct NewFile {
 pub struct ParsedQuery {
     pub fts: String,
     pub ext: Option<String>,
+    pub exts: Vec<String>,
     pub min_size: Option<i64>,
+    pub max_size: Option<i64>,
     pub volume: Option<String>,
 }
 
@@ -59,16 +68,39 @@ pub struct ExportRow {
     pub volume: String,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct DirRow {
+    pub id: i64,
+    pub parent_id: Option<i64>,
+    pub name: String,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FileRow {
+    pub id: i64,
+    pub dir_id: i64,
+    pub name: String,
+    pub size: i64,
+    pub mtime: i64,
+}
+
+fn lock_err() -> anyhow::Error {
+    anyhow::anyhow!("db lock poisoned")
+}
+
 impl Db {
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
+        // Per-connection pragma: foreign keys (incl. ON DELETE CASCADE) are
+        // off by default in SQLite and must be enabled on every connection.
+        conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.execute_batch(include_str!("schema.sql"))?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
     }
     pub fn insert_volume(&self, label: &str, serial: &str) -> Result<i64> {
-        let c = self.conn.lock().unwrap();
+        let c = self.conn.lock().map_err(|_| lock_err())?;
         c.execute(
             "INSERT OR IGNORE INTO volumes(label, serial, indexed_at) VALUES(?1, ?2, strftime('%s','now'))",
             params![label, serial],
@@ -79,6 +111,19 @@ impl Db {
             |r| r.get(0),
         )?)
     }
+    pub fn get_volume(&self, label: &str) -> Result<Option<VolumeInfo>> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let mut stmt =
+            c.prepare("SELECT label, serial, indexed_at FROM volumes WHERE label=?1 LIMIT 1")?;
+        let mut rows = stmt.query_map(params![label], |r| {
+            Ok(VolumeInfo {
+                label: r.get(0)?,
+                serial: r.get(1)?,
+                indexed_at: r.get(2)?,
+            })
+        })?;
+        Ok(rows.next().transpose()?)
+    }
     pub fn insert_dir(
         &self,
         volume_id: i64,
@@ -86,15 +131,20 @@ impl Db {
         name: &str,
         path_hash: &str,
     ) -> Result<i64> {
-        let c = self.conn.lock().unwrap();
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        // Tolerate existing dirs (re-scan path): keep the first row, return it.
         c.execute(
-            "INSERT INTO dirs(volume_id, parent_id, name, path_hash) VALUES(?1,?2,?3,?4)",
+            "INSERT INTO dirs(volume_id, parent_id, name, path_hash) VALUES(?1,?2,?3,?4) ON CONFLICT(volume_id, path_hash) DO NOTHING",
             params![volume_id, parent, name, path_hash],
         )?;
-        Ok(c.last_insert_rowid())
+        Ok(c.query_row(
+            "SELECT id FROM dirs WHERE volume_id=?1 AND path_hash=?2",
+            params![volume_id, path_hash],
+            |r| r.get(0),
+        )?)
     }
     pub fn insert_file_batch(&self, files: &[NewFile]) -> Result<()> {
-        let mut c = self.conn.lock().unwrap();
+        let mut c = self.conn.lock().map_err(|_| lock_err())?;
         let tx = c.transaction()?;
         for f in files {
             tx.execute("INSERT INTO files(dir_id, volume_id, name, ext, size, mtime, blake3, container_path, audio_json, image_json) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
@@ -103,12 +153,114 @@ impl Db {
         tx.commit()?;
         Ok(())
     }
-    pub fn search(&self, q: &ParsedQuery, limit: i64) -> Result<Vec<SearchHit>> {
-        let c = self.conn.lock().unwrap();
-        let mut stmt = c.prepare(
-            "SELECT f.id, f.name, f.size, v.label FROM files_fts ft JOIN files f ON f.id = ft.rowid JOIN volumes v ON v.id = f.volume_id WHERE files_fts MATCH ?1 AND (?2 IS NULL OR f.ext = ?2) AND (?3 IS NULL OR f.size >= ?3) AND (?4 IS NULL OR v.label = ?4) LIMIT ?5")?;
+    pub fn dirs_for_volume(&self, volume_id: i64) -> Result<Vec<DirRow>> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let mut stmt = c.prepare("SELECT id, parent_id, name FROM dirs WHERE volume_id=?1")?;
         let rows = stmt
-            .query_map(params![q.fts, q.ext, q.min_size, q.volume, limit], |r| {
+            .query_map(params![volume_id], |r| {
+                Ok(DirRow {
+                    id: r.get(0)?,
+                    parent_id: r.get(1)?,
+                    name: r.get(2)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+    pub fn files_for_volume(&self, volume_id: i64) -> Result<Vec<FileRow>> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let mut stmt =
+            c.prepare("SELECT id, dir_id, name, size, mtime FROM files WHERE volume_id=?1")?;
+        let rows = stmt
+            .query_map(params![volume_id], |r| {
+                Ok(FileRow {
+                    id: r.get(0)?,
+                    dir_id: r.get(1)?,
+                    name: r.get(2)?,
+                    size: r.get(3)?,
+                    mtime: r.get(4)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+    pub fn update_file(&self, id: i64, size: i64, mtime: i64, blake3: Option<&str>) -> Result<()> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        c.execute(
+            "UPDATE files SET size=?2, mtime=?3, blake3=?4 WHERE id=?1",
+            params![id, size, mtime, blake3],
+        )?;
+        Ok(())
+    }
+    pub fn delete_files(&self, ids: &[i64]) -> Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let mut c = self.conn.lock().map_err(|_| lock_err())?;
+        let tx = c.transaction()?;
+        for id in ids {
+            tx.execute("DELETE FROM files WHERE id=?1", params![id])?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+    /// Delete empty dirs bottom-up: only leaf dirs with no files, looped until
+    /// no more rows vanish (so newly-emptied parents are collected too).
+    /// Never deletes a dir that still holds files or child dirs.
+    pub fn delete_empty_dirs(&self, volume_id: i64) -> Result<()> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        loop {
+            let n = c.execute(
+                "DELETE FROM dirs WHERE volume_id=?1 AND NOT EXISTS(SELECT 1 FROM files WHERE files.dir_id=dirs.id) AND NOT EXISTS(SELECT 1 FROM dirs c WHERE c.parent_id=dirs.id)",
+                params![volume_id],
+            )?;
+            if n == 0 {
+                break;
+            }
+        }
+        Ok(())
+    }
+    pub fn search(&self, q: &ParsedQuery, limit: i64) -> Result<Vec<SearchHit>> {
+        // `ext` is kept for backwards compat; `exts` (multi) wins when non-empty.
+        let exts: Vec<&str> = if q.exts.is_empty() {
+            q.ext.as_deref().into_iter().collect()
+        } else {
+            q.exts.iter().map(String::as_str).collect()
+        };
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let mut sql = if q.fts.is_empty() {
+            "SELECT f.id, f.name, f.size, v.label FROM files f JOIN volumes v ON v.id = f.volume_id WHERE 1=1".to_string()
+        } else {
+            "SELECT f.id, f.name, f.size, v.label FROM files_fts ft JOIN files f ON f.id = ft.rowid JOIN volumes v ON v.id = f.volume_id WHERE files_fts MATCH ?".to_string()
+        };
+        let mut args: Vec<rusqlite::types::Value> = Vec::new();
+        if !q.fts.is_empty() {
+            args.push(q.fts.clone().into());
+        }
+        if !exts.is_empty() {
+            let ph = exts.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            sql.push_str(&format!(" AND f.ext IN ({ph})"));
+            for e in &exts {
+                args.push((*e).to_string().into());
+            }
+        }
+        if let Some(m) = q.min_size {
+            sql.push_str(" AND f.size >= ?");
+            args.push(m.into());
+        }
+        if let Some(m) = q.max_size {
+            sql.push_str(" AND f.size <= ?");
+            args.push(m.into());
+        }
+        if let Some(v) = &q.volume {
+            sql.push_str(" AND v.label = ?");
+            args.push(v.clone().into());
+        }
+        sql.push_str(" LIMIT ?");
+        args.push(limit.into());
+        let mut stmt = c.prepare(&sql)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(args.iter()), |r| {
                 Ok(SearchHit {
                     id: r.get(0)?,
                     name: r.get(1)?,
@@ -120,7 +272,7 @@ impl Db {
         Ok(rows)
     }
     pub fn list_duplicates(&self, limit: i64) -> Result<Vec<DuplicateGroup>> {
-        let c = self.conn.lock().unwrap();
+        let c = self.conn.lock().map_err(|_| lock_err())?;
         let mut stmt = c.prepare(
             "SELECT blake3, size, COUNT(*) as n, MIN(name) FROM files WHERE blake3 IS NOT NULL GROUP BY blake3, size HAVING n > 1 LIMIT ?",
         )?;
@@ -137,7 +289,7 @@ impl Db {
         Ok(rows)
     }
     pub fn export_rows(&self) -> Result<Vec<ExportRow>> {
-        let c = self.conn.lock().unwrap();
+        let c = self.conn.lock().map_err(|_| lock_err())?;
         let mut stmt = c.prepare(
             "SELECT f.name, f.size, v.label FROM files f JOIN volumes v ON v.id = f.volume_id ORDER BY f.name",
         )?;
