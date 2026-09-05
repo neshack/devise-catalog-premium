@@ -31,13 +31,14 @@ export default function CatalogTree({
           const h = hits[vi.index];
           return (
             <div
-              key={h.id}
+              key={vi.key}
               onClick={() => onSelect?.(h)}
               style={{
                 position: "absolute",
                 top: 0,
                 left: 0,
                 width: "100%",
+                height: `${vi.size}px`,
                 transform: `translateY(${vi.start}px)`,
               }}
               className="text-sm px-2 cursor-pointer"

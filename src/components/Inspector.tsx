@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Hit } from "./CatalogTree";
 
@@ -18,6 +18,11 @@ export default function Inspector({
 }) {
   const [dups, setDups] = useState<DuplicateGroup[] | null>(null);
   const [dupsError, setDupsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDups(null);
+    setDupsError(null);
+  }, [hit?.id, dbPath]);
 
   async function loadDuplicates() {
     setDupsError(null);
@@ -54,7 +59,7 @@ export default function Inspector({
             <p className="text-zinc-500">Sin duplicados</p>
           ) : (
             dups.map((d) => (
-              <div key={d.blake3} className="text-sm">
+              <div key={`${d.blake3}:${d.size}`} className="text-sm">
                 {d.sample_name} — {d.count} × {d.size}
               </div>
             ))
