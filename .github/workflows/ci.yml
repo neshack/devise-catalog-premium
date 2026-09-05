@@ -25,3 +25,17 @@ jobs:
         working-directory: src-tauri
       - run: cargo test
         working-directory: src-tauri
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps
+      - run: npx playwright test
+      - run: cargo bench -p core-db --bench search_bench -- --sample-size 10 --measurement-time 1
+        working-directory: src-tauri
