@@ -6,7 +6,7 @@
 
 **Architecture:** Tauri v2 con workspace Rust (scanner paralelo → SQLite WAL + FTS5 en batches) y frontend React virtualizado; IPC tipado por commands; exports estáticos sin red.
 
-**Tech Stack:** Tauri v2, Rust 1.77+ (rusqlite 0.31 bundled+fts5, jwalk 0.8, rayon 1.8, blake3 1.5, lofty 0.20, rexif 0.7, zip 2.1), TypeScript 5 strict, Vite 5, React 18, TanStack Virtual 3, Zustand 4, Tailwind 3, Vitest + Playwright, GitHub Actions (Win/Linux/macOS).
+**Tech Stack:** Tauri v2, Rust 1.77+ (rusqlite 0.31 bundled+fts5, jwalk 0.8, rayon 1.8, blake3 1.5, lofty 0.20, rexif 0.7, zip 2.1), TypeScript 5 strict, Vite 5+, React 18+, TanStack Virtual 3, Zustand 4, Tailwind 3, Vitest + Playwright, GitHub Actions (Win/Linux/macOS). Frontend majors are minimum floors — exact versions pinned by `package-lock.json` (amended 2026-09-05, see SDD ledger).
 
 **Spec:** `docs/superpowers/specs/2026-09-05-cd-catalog-premium-design.md`
 
