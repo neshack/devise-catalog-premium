@@ -9,6 +9,7 @@ pub fn run() {
             commands::scan::scan_volume,
             commands::scan::cancel_scan,
             commands::search::search,
+            commands::search::list_duplicates,
             commands::export::export_csv
         ])
         .run(tauri::generate_context!())

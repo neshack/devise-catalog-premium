@@ -44,6 +44,14 @@ pub struct SearchHit {
     pub volume_label: String,
 }
 
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct DuplicateGroup {
+    pub blake3: String,
+    pub size: i64,
+    pub count: i64,
+    pub sample_name: String,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct ExportRow {
     pub name: String,
@@ -106,6 +114,23 @@ impl Db {
                     name: r.get(1)?,
                     size: r.get(2)?,
                     volume_label: r.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+    pub fn list_duplicates(&self, limit: i64) -> Result<Vec<DuplicateGroup>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT blake3, size, COUNT(*) as n, MIN(name) FROM files WHERE blake3 IS NOT NULL GROUP BY blake3, size HAVING n > 1 LIMIT ?",
+        )?;
+        let rows = stmt
+            .query_map(params![limit], |r| {
+                Ok(DuplicateGroup {
+                    blake3: r.get(0)?,
+                    size: r.get(1)?,
+                    count: r.get(2)?,
+                    sample_name: r.get(3)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
