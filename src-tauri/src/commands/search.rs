@@ -44,7 +44,10 @@ pub fn search(db_path: String, raw: String, limit: i64) -> Result<Vec<core_db::S
 }
 
 #[tauri::command]
-pub fn list_duplicates(db_path: String, limit: i64) -> Result<Vec<core_db::DuplicateGroup>, String> {
+pub fn list_duplicates(
+    db_path: String,
+    limit: i64,
+) -> Result<Vec<core_db::DuplicateGroup>, String> {
     let db = Db::open(Path::new(&db_path)).map_err(|e| e.to_string())?;
     db.list_duplicates(limit).map_err(|e| e.to_string())
 }
