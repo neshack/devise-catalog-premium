@@ -352,6 +352,9 @@ dependencies = [
 name = "cd-catalog-premium"
 version = "0.1.0"
 dependencies = [
+ "core-db",
+ "core-export",
+ "core-scanner",
  "serde",
  "serde_json",
  "tauri",
@@ -453,6 +456,15 @@ dependencies = [
  "rusqlite",
  "serde",
  "tempfile",
+]
+
+[[package]]
+name = "core-export"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

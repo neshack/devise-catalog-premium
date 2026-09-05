@@ -44,6 +44,13 @@ pub struct SearchHit {
     pub volume_label: String,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct ExportRow {
+    pub name: String,
+    pub size: i64,
+    pub volume: String,
+}
+
 impl Db {
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
@@ -99,6 +106,22 @@ impl Db {
                     name: r.get(1)?,
                     size: r.get(2)?,
                     volume_label: r.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+    pub fn export_rows(&self) -> Result<Vec<ExportRow>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT f.name, f.size, v.label FROM files f JOIN volumes v ON v.id = f.volume_id ORDER BY f.name",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(ExportRow {
+                    name: r.get(0)?,
+                    size: r.get(1)?,
+                    volume: r.get(2)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
