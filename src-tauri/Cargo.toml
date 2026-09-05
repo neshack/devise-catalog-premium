@@ -16,4 +16,4 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [workspace]
-members = [".", "crates/core-db"]
+members = [".", "crates/core-db", "crates/core-hash", "crates/core-parsers"]
