@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CD Catalog Premium",
+  "version": "0.1.0",
+  "identifier": "com.cd_catalog.premium",
+  "build": { "frontendDist": "../dist", "devUrl": "http://localhost:1420" },
+  "app": { "windows": [{ "title": "CD Catalog Premium", "width": 1280, "height": 800 }] },
+  "bundle": { "active": true, "targets": "all", "icon": ["icons/32x32.png"] }
+}

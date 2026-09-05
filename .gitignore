@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+src-tauri/target/
+src-tauri/gen/
+
+# Logs / editor
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.local
