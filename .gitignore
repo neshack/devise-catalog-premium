@@ -12,3 +12,9 @@ src-tauri/gen/
 .vscode/*
 !.vscode/extensions.json
 *.local
+
+# Playwright
+test-results/
+
+# Capturas de la UI (scripts/capture.mjs)
+screenshots/
