@@ -27,3 +27,9 @@ test-results/
 
 # Capturas de la UI (scripts/capture.mjs)
 screenshots/
+
+# Artefactos de diseño (decisiones, mockups, revisiones): no son fuente
+.impeccable/
+
+# Ráster intermedio del icono: lo genera scripts/icon.mjs desde el SVG
+src-tauri/icons/icon-source.png
