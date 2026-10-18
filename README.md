@@ -8,7 +8,8 @@ Todo el catálogo vive en un único archivo portable `.cdc` (SQLite WAL + FTS5).
 
 ## Stack
 
-- **App:** Tauri v2 + Rust (backend) + TypeScript + React + Vite + Tailwind
+- **App:** Tauri v2 + Rust (backend) + TypeScript + React + Vite (sin Tailwind:
+  design system propio en `src/index.css` con variables CSS)
 - **Datos:** SQLite WAL + FTS5 (`rusqlite`), un solo archivo `.cdc`
 - **Escaneo:** `jwalk` + hash BLAKE3 + parsers (`lofty` audio, `rexif` EXIF, `zip`)
 - **UI:** Zustand + TanStack Virtual (listas de millones de filas a 60 fps)
@@ -48,8 +49,11 @@ En Linux sin pantalla usa `xvfb-run -a npm run tauri dev`.
 npm run dev        # http://localhost:1420
 ```
 
-Renderiza la UI, pero `search`/`scan` fallan: los comandos Tauri solo existen
-dentro de `tauri dev` / la app compilada.
+Renderiza la UI completa en **modo demo** (badge en la barra de estado): el
+catálogo vive en memoria con datos de ejemplo, así que todas las pantallas —
+búsqueda, inspector, duplicados, escaneo, exportación — son navegables sin
+backend. Con `tauri dev` / la app compilada el badge pasa a «catálogo activo»
+y todo opera sobre el `.cdc` real.
 
 ### Build de producción
 
@@ -67,50 +71,54 @@ Genera el binario + instalador en `src-tauri/target/release/bundle/`:
 
 ## Primer catálogo: escanear un volumen
 
-> Nota: el botón "Escanear" en la UI es el próximo milestone. Mientras tanto,
-> el backend `scan_volume` está completo y se invoca desde la consola DevTools
-> de la app (`tauri dev` → clic derecho → Inspeccionar → Consola):
+1. Botón **Escanear volumen** (barra lateral izquierda).
+2. Carpeta raíz absoluta (`/media/backup`, `D:\`, un NAS montado…), etiqueta
+   y — opcionalmente — nº de serie.
+3. El progreso se muestra en vivo (archivos vistos / bytes procesados) y se
+   puede cancelar. Al terminar, el volumen aparece en la barra lateral.
+
+Re-escanear el mismo volumen es **diferencial**: solo inserta/actualiza lo
+cambiado y borra lo que ya no existe.
+
+La app resuelve `catalog.cdc` en su carpeta de datos automáticamente
+(`appDataDir`). Desde consola DevTools también vale (uso manual/avanzado):
 
 ```js
 const { invoke } = await import("@tauri-apps/api/core");
-
-// Escanea /media/backup etiquetado como "Backup-12" en el catálogo ./catalog.cdc
 await invoke("scan_volume", {
   root: "/media/backup",
   label: "Backup-12",
   serial: "VOL-001",
   dbPath: "/home/tu-usuario/catalog.cdc",  // ruta ABSOLUTA
 });
-// → devuelve nº de archivos indexados. Re-escanear es diferencial:
-// solo inserta/actualiza lo cambiado y borra lo que ya no existe.
 ```
-
-La app resuelve `catalog.cdc` en su carpeta de datos automáticamente
-(`appDataDir`); el `dbPath` absoluto es para uso manual/avanzado.
 
 ## Buscar
 
-En la barra de búsqueda (`Ctrl+K`):
+En la barra de búsqueda (`Ctrl+K`, Escape limpia; los filtros activos se
+muestran como chips quitables dentro del propio campo):
 
 ```
 *.mp3                    → todos los mp3
 informe size:>5MB        → "informe" de más de 5 MB
 ext:{mp3,flac} size:<10MB   → lista de extensiones + tamaño máximo
-volume:"Backup-12"       → solo ese volumen
+volume:"Backup-12"       → solo ese volumen (o clic en un volumen de la barra lateral)
 Beatles                  → full-text (tolerante a * " ( ) :)
 ```
 
 Sintaxis completa en `src/lib/search.ts` (frontend) y
-`src-tauri/src/commands/search.rs` (`parse_raw_query`, lado autoritativo).
+`src-tauri/src/commands/search.rs` (`parse_raw_query`, lado autoritativo);
+también disponible desde el botón «?» de la cabecera.
 
-Desde consola también vale:
+### Duplicados, inspector y exportación
 
-```js
-await invoke("search", { dbPath: "<abs>/catalog.cdc", raw: '*.mp3 size:>5MB', limit: 200 });
-await invoke("list_duplicates", { dbPath: "<abs>/catalog.cdc", limit: 100 });
-await invoke("export_csv", { dbPath: "<abs>/catalog.cdc", outPath: null }); // → ruta del .csv
-await invoke("cancel_scan");
-```
+- Pestaña **Duplicados**: grupos de archivos con idéntico hash BLAKE3
+  (`list_duplicates`), con nº de copias y espacio recuperable.
+- **Inspector** (panel derecho): ruta completa, tamaño, fecha, tipo y hash del
+  archivo seleccionado; con `file_duplicates` lista sus copias exactas en
+  otros volúmenes.
+- Menú **Exportar**: catálogo completo a CSV, JSON o HTML (`export_*`); el
+  archivo se escribe junto al `.cdc` y la ruta se muestra en un aviso.
 
 ## Tests y calidad
 
@@ -143,10 +151,14 @@ src-tauri/
   crates/core-parsers # ID3 (lofty), EXIF (rexif), ZIP
   crates/core-export  # CSV / JSON / HTML (con escaping)
 src/
-  lib/search.ts       # parser de queries (hints de UI)
-  stores/volumes.ts   # Zustand
-  components/{SearchBar,VolumeSidebar,CatalogTree,Inspector}.tsx
-tests/e2e/            # Playwright
+  lib/{search,types,format,ipc,mock}.ts  # parser de queries, tipos, formato,
+                                         # IPC Tauri + modo demo
+  stores/catalog.ts   # Zustand: búsqueda, volúmenes, escaneo, toasts
+  components/         # SearchBar (chips), VolumeSidebar, ResultsList (virtual),
+                      # Inspector, DuplicatesPanel, ScanDialog, ExportMenu,
+                      # Toasts, StatusBar, icons (SVG)
+tests/e2e/            # Playwright (corren sobre el modo demo)
+scripts/capture.mjs   # capturas de la UI para revisión visual
 docs/superpowers/
   specs/2026-09-05-cd-catalog-premium-design.md  # diseño aprobado
   plans/2026-09-05-cd-catalog-premium.md         # plan de implementación
@@ -155,7 +167,8 @@ docs/superpowers/
 ## Estado del MVP y límites conocidos
 
 - ✅ Escaneo diferencial, búsqueda <100 ms, duplicados por BLAKE3, export.
-- 🔜 Botón Escanear/Exportar en la UI (hoy vía consola, ver arriba).
+- ✅ UI completa: escaneo con progreso en vivo, vista Duplicados, inspector
+  con copias idénticas por hash, exportación, chips de filtros, modo demo.
 - 🔜 Filas de contenido interno de ZIP/7z/ISO y metadatos ID3/EXIF visibles
   en el Inspector (el scan ya guarda hash; parsers listos).
 - El catálogo es un archivo: llévalo a otro PC y ábrelo intacto.
