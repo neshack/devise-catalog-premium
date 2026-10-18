@@ -69,6 +69,16 @@ Genera el binario + instalador en `src-tauri/target/release/bundle/`:
 | Linux | `.deb` / `.AppImage` |
 | macOS | `.dmg` / `.app` |
 
+En distros con librerías recientes el AppImage puede fallar con `failed to run
+linuxdeploy`: su `strip` no entiende la sección `.relr.dyn` de esas librerías.
+El `.deb` y el `.rpm` sí se generan; para el AppImage:
+
+```bash
+NO_STRIP=1 npm run tauri build
+```
+
+El workflow de release usa `ubuntu-22.04` precisamente por esto.
+
 ### Instaladores firmados (CI)
 
 `.github/workflows/release.yml` compila los tres sistemas en cada tag `v*` —o a
