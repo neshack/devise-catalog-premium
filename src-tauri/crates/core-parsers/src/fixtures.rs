@@ -40,6 +40,23 @@ pub fn flac(artist: &str, album: &str) -> Vec<u8> {
     out
 }
 
+/// A ZIP archive holding `entries` as `(path inside the archive, contents)`.
+pub fn zip_with(entries: &[(&str, &[u8])]) -> Vec<u8> {
+    use std::io::Write;
+    let mut out = Vec::new();
+    {
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(&mut out));
+        for (name, data) in entries {
+            writer
+                .start_file(*name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(data).unwrap();
+        }
+        writer.finish().unwrap();
+    }
+    out
+}
+
 /// Minimal JPEG whose APP1 segment carries little-endian EXIF with
 /// ImageWidth (0x0100) and ImageLength (0x0101).
 pub fn jpeg_with_dimensions(width: u16, height: u16) -> Vec<u8> {

@@ -15,4 +15,10 @@ CREATE TRIGGER files_au AFTER UPDATE ON files BEGIN DELETE FROM files_fts WHERE 
 CREATE TABLE IF NOT EXISTS thumbs(file_id INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE, webp128 BLOB);
 CREATE TABLE IF NOT EXISTS scan_errors(id INTEGER PRIMARY KEY, volume_id INTEGER NOT NULL REFERENCES volumes(id) ON DELETE CASCADE, path TEXT NOT NULL, reason TEXT NOT NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dirs_vol_pathhash ON dirs(volume_id, path_hash);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_files_vol_dir_name ON files(volume_id, dir_id, name);
+-- Name uniqueness is per folder for files on disk, and per folder+archive for
+-- entries inside a container: the same `readme.txt` can live on disk and in
+-- two different ZIPs of the same folder. Dropped unconditionally so catalogs
+-- created before archives were indexed get migrated on open.
+DROP INDEX IF EXISTS idx_files_vol_dir_name;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_files_vol_dir_name_disk ON files(volume_id, dir_id, name) WHERE container_path IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_files_vol_dir_name_cont ON files(volume_id, dir_id, name, container_path) WHERE container_path IS NOT NULL;

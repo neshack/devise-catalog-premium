@@ -66,6 +66,8 @@ pub struct SearchHit {
     pub blake3: Option<String>,
     pub audio_json: Option<String>,
     pub image_json: Option<String>,
+    /// Set when the hit lives inside an archive instead of on disk.
+    pub container_path: Option<String>,
 }
 
 #[derive(Debug, PartialEq, serde::Serialize)]
@@ -120,6 +122,8 @@ pub struct FileRow {
     pub name: String,
     pub size: i64,
     pub mtime: i64,
+    /// Set when the row lives inside an archive instead of on disk.
+    pub container_path: Option<String>,
 }
 
 fn lock_err() -> anyhow::Error {
@@ -228,8 +232,9 @@ impl Db {
     }
     pub fn files_for_volume(&self, volume_id: i64) -> Result<Vec<FileRow>> {
         let c = self.conn.lock().map_err(|_| lock_err())?;
-        let mut stmt =
-            c.prepare("SELECT id, dir_id, name, size, mtime FROM files WHERE volume_id=?1")?;
+        let mut stmt = c.prepare(
+            "SELECT id, dir_id, name, size, mtime, container_path FROM files WHERE volume_id=?1",
+        )?;
         let rows = stmt
             .query_map(params![volume_id], |r| {
                 Ok(FileRow {
@@ -238,6 +243,7 @@ impl Db {
                     name: r.get(2)?,
                     size: r.get(3)?,
                     mtime: r.get(4)?,
+                    container_path: r.get(5)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -301,14 +307,16 @@ impl Db {
         let mut sql = if q.fts.is_empty() {
             format!(
                 "{DIR_PATH_CTE} SELECT f.id, f.name, f.size, v.label, f.ext, f.mtime, \
-                 COALESCE(NULLIF(dp.p, ''), '/'), f.blake3, f.audio_json, f.image_json \
+                 COALESCE(NULLIF(dp.p, ''), '/'), f.blake3, f.audio_json, f.image_json, \
+                 f.container_path \
                  FROM files f JOIN volumes v ON v.id = f.volume_id \
                  LEFT JOIN dp ON dp.id = f.dir_id WHERE 1=1"
             )
         } else {
             format!(
                 "{DIR_PATH_CTE} SELECT f.id, f.name, f.size, v.label, f.ext, f.mtime, \
-                 COALESCE(NULLIF(dp.p, ''), '/'), f.blake3, f.audio_json, f.image_json \
+                 COALESCE(NULLIF(dp.p, ''), '/'), f.blake3, f.audio_json, f.image_json, \
+                 f.container_path \
                  FROM files_fts ft JOIN files f ON f.id = ft.rowid \
                  JOIN volumes v ON v.id = f.volume_id \
                  LEFT JOIN dp ON dp.id = f.dir_id WHERE files_fts MATCH ?"
@@ -353,6 +361,7 @@ impl Db {
                     blake3: r.get(7)?,
                     audio_json: r.get(8)?,
                     image_json: r.get(9)?,
+                    container_path: r.get(10)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;

@@ -201,16 +201,18 @@ pub fn scan_into_db(
     });
 
     // Snapshot of what's already indexed for differential sync:
-    // (normalized_dir_path, file_name) -> (size, mtime, id). Entries removed
-    // from this map as they are seen; leftovers are missing files to DELETE.
+    // (dir, name, container) -> (size, mtime, id). Entries are removed from
+    // this map as they are seen; leftovers are rows to DELETE. The container
+    // belongs in the key because the same name can live on disk, inside one
+    // archive and inside another, all of them in the same folder.
     let dir_paths = dir_full_paths(&db.dirs_for_volume(vid).map_err(|e| e.to_string())?);
-    let mut existing: HashMap<(String, String), (i64, i64, i64)> = HashMap::new();
+    let mut existing: HashMap<RowKey, (i64, i64, i64)> = HashMap::new();
     for f in db.files_for_volume(vid).map_err(|e| e.to_string())? {
         let dir = dir_paths
             .get(&f.dir_id)
             .cloned()
             .unwrap_or_else(|| "/".to_string());
-        existing.insert((dir, f.name), (f.size, f.mtime, f.id));
+        existing.insert((dir, f.name, f.container_path), (f.size, f.mtime, f.id));
     }
 
     let mut batch: Vec<core_db::NewFile> = Vec::with_capacity(5000);
@@ -231,46 +233,32 @@ pub fn scan_into_db(
         } else {
             format!("/{}", dir_rel.trim_matches('/'))
         };
-        match existing.remove(&(dir_key, name.clone())) {
-            Some((size, mtime, _)) if size == e.size && mtime == e.mtime => {
-                continue; // unchanged: skip entirely (no re-hash, no write)
-            }
-            Some((_, _, id)) => {
-                // Changed metadata: recompute hash (never fail the scan) + UPDATE.
-                let abs = rootp.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
-                let hash = core_hash::blake3_partial(&abs, 65536).ok();
-                let meta = core_parsers::enrich(&abs, &e.ext);
-                db.update_file(
-                    id,
-                    e.size,
-                    e.mtime,
-                    hash.as_deref(),
-                    meta.audio_json.as_deref(),
-                    meta.image_json.as_deref(),
-                )
-                .map_err(|e| e.to_string())?;
-            }
-            None => {
-                let dir_id = ensure_dir(&db, vid, &dir_rel, &mut dircache)?;
-                let abs = rootp.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
-                let hash = core_hash::blake3_partial(&abs, 65536).ok();
-                let meta = core_parsers::enrich(&abs, &e.ext);
-                batch.push(core_db::NewFile {
-                    dir_id,
-                    volume_id: vid,
-                    name,
-                    ext: e.ext,
-                    size: e.size,
-                    mtime: e.mtime,
-                    blake3: hash,
-                    container_path: e.container_path,
-                    audio_json: meta.audio_json,
-                    image_json: meta.image_json,
-                });
-                if batch.len() >= 5000 {
-                    db.insert_file_batch(&batch).map_err(|e| e.to_string())?;
-                    batch.clear();
-                }
+        let abs = rootp.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
+        let expand_archive = e.ext.eq_ignore_ascii_case("zip");
+
+        sync_row(
+            &db,
+            vid,
+            &mut existing,
+            &mut batch,
+            &mut dircache,
+            Row {
+                dir_rel: dir_rel.clone(),
+                dir_key: dir_key.clone(),
+                name,
+                ext: e.ext,
+                size: e.size,
+                mtime: e.mtime,
+                abs: Some(abs.clone()),
+                container_path: e.container_path,
+            },
+        )?;
+
+        // Archives are indexed by content too: the rows inside come from the
+        // central directory, nothing is ever extracted.
+        if expand_archive {
+            for row in archive_rows(&abs, &rel, &dir_rel, &dir_key, e.mtime) {
+                sync_row(&db, vid, &mut existing, &mut batch, &mut dircache, row)?;
             }
         }
     }
@@ -283,6 +271,133 @@ pub fn scan_into_db(
     db.delete_files(&missing).map_err(|e| e.to_string())?;
     db.delete_empty_dirs(vid).map_err(|e| e.to_string())?;
     Ok(total)
+}
+
+/// Identity of a row inside a volume: its folder, its name, and — for entries
+/// inside an archive — which archive.
+type RowKey = (String, String, Option<String>);
+
+/// One row to synchronize, either a file found on disk or an entry read from
+/// an archive's central directory.
+struct Row {
+    dir_rel: String,
+    dir_key: String,
+    name: String,
+    ext: String,
+    size: i64,
+    mtime: i64,
+    /// Path on disk to hash and parse. `None` for archive entries: hashing
+    /// every member of every archive costs far more than it is worth.
+    abs: Option<std::path::PathBuf>,
+    container_path: Option<String>,
+}
+
+/// Index pointer of a ZIP: enough of them in one archive and the catalog
+/// (and the UI reading it) stops being useful, so the rest is dropped.
+const MAX_ARCHIVE_ENTRIES: usize = 10_000;
+
+/// Rows for what a ZIP holds, read from its central directory.
+///
+/// The row name is the entry's path inside the archive. Entry paths are unique
+/// per archive, so two differently placed `readme.txt` cannot land on the same
+/// row. Entries inherit the archive's mtime: that is when they arrived in the
+/// catalog, and it keeps the differential comparison stable between scans.
+fn archive_rows(
+    archive: &Path,
+    container_rel: &str,
+    dir_rel: &str,
+    dir_key: &str,
+    mtime: i64,
+) -> Vec<Row> {
+    let entries = match core_parsers::guarded(|| core_parsers::list_container(archive)) {
+        Some(Ok(entries)) => entries,
+        // A truncated or unsupported archive is just a file with no inner rows.
+        _ => return Vec::new(),
+    };
+    entries
+        .into_iter()
+        .filter_map(|entry| {
+            let inner = entry.inner_path.replace('\\', "/");
+            let inner = inner.trim_end_matches('/'); // directory marker, not a file
+            if inner.is_empty() {
+                return None;
+            }
+            let ext = Path::new(inner)
+                .extension()
+                .map(|e| e.to_string_lossy().to_ascii_lowercase())
+                .unwrap_or_default();
+            Some(Row {
+                dir_rel: dir_rel.to_string(),
+                dir_key: dir_key.to_string(),
+                name: inner.to_string(),
+                ext,
+                size: entry.size.min(i64::MAX as u64) as i64,
+                mtime,
+                abs: None,
+                container_path: Some(container_rel.to_string()),
+            })
+        })
+        .take(MAX_ARCHIVE_ENTRIES)
+        .collect()
+}
+
+/// Bring one row in line with disk: skip it untouched when size and mtime
+/// match, refresh it when they do not, insert it when it is new.
+#[allow(clippy::too_many_arguments)]
+fn sync_row(
+    db: &core_db::Db,
+    vid: i64,
+    existing: &mut HashMap<RowKey, (i64, i64, i64)>,
+    batch: &mut Vec<core_db::NewFile>,
+    dircache: &mut HashMap<String, i64>,
+    row: Row,
+) -> Result<(), String> {
+    let key = (row.dir_key, row.name.clone(), row.container_path.clone());
+    // Hashing and metadata are best-effort: a file that vanished mid-scan or
+    // that no parser understands still gets indexed.
+    let fingerprint = || match &row.abs {
+        Some(path) => (
+            core_hash::blake3_partial(path, 65536).ok(),
+            core_parsers::enrich(path, &row.ext),
+        ),
+        None => (None, core_parsers::FileEnrichment::default()),
+    };
+    match existing.remove(&key) {
+        Some((size, mtime, _)) if size == row.size && mtime == row.mtime => Ok(()),
+        Some((_, _, id)) => {
+            let (hash, meta) = fingerprint();
+            db.update_file(
+                id,
+                row.size,
+                row.mtime,
+                hash.as_deref(),
+                meta.audio_json.as_deref(),
+                meta.image_json.as_deref(),
+            )
+            .map_err(|e| e.to_string())
+        }
+        None => {
+            let dir_id = ensure_dir(db, vid, &row.dir_rel, dircache)?;
+            let (hash, meta) = fingerprint();
+            batch.push(core_db::NewFile {
+                dir_id,
+                volume_id: vid,
+                name: row.name,
+                ext: row.ext,
+                size: row.size,
+                mtime: row.mtime,
+                blake3: hash,
+                container_path: row.container_path,
+                audio_json: meta.audio_json,
+                image_json: meta.image_json,
+            });
+            if batch.len() >= 5000 {
+                db.insert_file_batch(batch).map_err(|e| e.to_string())?;
+                batch.clear();
+            }
+            Ok(())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -399,6 +514,89 @@ mod tests {
         let audio_json = audio.audio_json.as_deref().expect("refreshed audio json");
         assert!(audio_json.contains("Bill Evans"), "got {audio_json}");
         assert!(!audio_json.contains("Nina Simone"), "got {audio_json}");
+    }
+
+    #[test]
+    fn scan_indexes_zip_entries_without_extracting() {
+        let (root, cat) = setup();
+        let db = cat.path().join("t.cdc");
+        fs::write(
+            root.path().join("fotos.zip"),
+            core_parsers::fixtures::zip_with(&[
+                ("docs/informe.pdf", b"fake pdf"),
+                ("notas.txt", b"hello zip"),
+            ]),
+        )
+        .unwrap();
+
+        // One file on disk: the archive itself.
+        assert_eq!(scan(&db, root.path()), 1);
+
+        let rows = all_rows(&db);
+        assert_eq!(rows.len(), 3, "archive plus its two entries");
+        let archive = rows
+            .iter()
+            .find(|h| h.name == "fotos.zip")
+            .expect("archive row");
+        assert_eq!(archive.container_path, None);
+
+        let mut entries: Vec<(String, Option<String>, i64)> = rows
+            .iter()
+            .filter(|h| h.name != "fotos.zip")
+            .map(|h| (h.name.clone(), h.container_path.clone(), h.size))
+            .collect();
+        entries.sort();
+        assert_eq!(
+            entries,
+            vec![
+                (
+                    "docs/informe.pdf".to_string(),
+                    Some("fotos.zip".to_string()),
+                    8
+                ),
+                ("notas.txt".to_string(), Some("fotos.zip".to_string()), 9),
+            ]
+        );
+
+        // Rescan: entries must neither duplicate nor get swept as missing,
+        // even though the archive shows up as unchanged on disk.
+        scan(&db, root.path());
+        assert_eq!(all_rows(&db).len(), 3);
+
+        // Removing the archive takes its entries with it.
+        fs::remove_file(root.path().join("fotos.zip")).unwrap();
+        scan(&db, root.path());
+        assert_eq!(all_rows(&db).len(), 0);
+    }
+
+    #[test]
+    fn scan_keeps_same_entry_name_from_different_archives_apart() {
+        let (root, cat) = setup();
+        let db = cat.path().join("t.cdc");
+        for name in ["a.zip", "b.zip"] {
+            fs::write(
+                root.path().join(name),
+                core_parsers::fixtures::zip_with(&[("readme.txt", b"same name inside")]),
+            )
+            .unwrap();
+        }
+
+        assert_eq!(scan(&db, root.path()), 2);
+        let containers: Vec<Option<String>> = all_rows(&db)
+            .into_iter()
+            .filter(|h| h.name == "readme.txt")
+            .map(|h| h.container_path)
+            .collect();
+        assert_eq!(
+            containers.len(),
+            2,
+            "both archives hold a readme.txt and both must be indexed"
+        );
+
+        // The old (dir, name) key would treat them as one row and re-insert
+        // the loser on every scan.
+        scan(&db, root.path());
+        assert_eq!(all_rows(&db).len(), 4);
     }
 
     #[test]
