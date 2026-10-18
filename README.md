@@ -69,6 +69,31 @@ Genera el binario + instalador en `src-tauri/target/release/bundle/`:
 | Linux | `.deb` / `.AppImage` |
 | macOS | `.dmg` / `.app` |
 
+### Instaladores firmados (CI)
+
+`.github/workflows/release.yml` compila los tres sistemas en cada tag `v*` —o a
+mano con *Actions → release → Run workflow*— y sube los instaladores como
+artefactos del run.
+
+La firma depende de secretos del repositorio y es opcional por plataforma: sin
+ellos el mismo workflow compila y sube instaladores **sin firmar** (lo que ve
+una bifurcación o un dry-run), y con ellos firma, notariza (macOS) y **verifica
+la firma antes de publicar** — un artefacto que solo lo parece falla el job.
+
+`scripts/wizard-signing.sh` recorre la parte que solo puede hacer una persona
+(portal de Apple, autoridad certificadora, contraseñas) y deja los secretos en
+el repositorio:
+
+| Grupo | Secretos | Lo que habilita |
+|---|---|---|
+| Firma macOS | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `KEYCHAIN_PASSWORD`, `APPLE_SIGNING_IDENTITY` | `codesign` + `codesign --verify` |
+| Notarización macOS | `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | notarización + `spctl` + `stapler validate` |
+| Firma Windows | `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD` | Authenticode + `Get-AuthenticodeSignature` |
+
+Los paquetes de Linux quedan sin firma **a propósito**: `.deb` y `.AppImage` no
+tienen comprobación de firma a nivel de sistema; lo equivalente es un repositorio
+de paquetes firmado con GPG, que este proyecto todavía no publica.
+
 ## Primer catálogo: escanear un volumen
 
 1. Botón **Escanear volumen** (barra lateral izquierda).
@@ -159,6 +184,8 @@ src/
                       # Toasts, StatusBar, icons (SVG)
 tests/e2e/            # Playwright (corren sobre el modo demo)
 scripts/capture.mjs   # capturas de la UI para revisión visual
+scripts/wizard-signing.sh  # secretos de firma para el CI (portal Apple, CA)
+scripts/seed_large.py # 10 000 archivos fake para probar escala
 docs/superpowers/
   specs/2026-09-05-cd-catalog-premium-design.md  # diseño aprobado
   plans/2026-09-05-cd-catalog-premium.md         # plan de implementación
@@ -173,5 +200,10 @@ docs/superpowers/
   `lofty` (intérprete, álbum, bitrate) y EXIF vía `rexif` (dimensiones).
 - ✅ Contenido de los ZIP indexado sin extraer: una fila por entrada, con el
   ZIP de origen visible en la fila y en el Inspector.
+- ✅ Empaquetado en los tres sistemas (`release.yml`): firmado y notarizado en
+  macOS y firmado en Windows cuando los secretos están puestos, sin firma en
+  Linux (`.deb`/`.AppImage` no verifican firmas).
 - 🔜 7z e ISO siguen pendientes: `zip` es hoy el único parser de contenedores.
+- 🔜 La firma real todavía no se ha estrenado: el workflow y el asistente están
+  listos, pero los certificados de Apple y de la CA se compran aparte.
 - El catálogo es un archivo: llévalo a otro PC y ábrelo intacto.
