@@ -13,6 +13,15 @@ src-tauri/gen/
 !.vscode/extensions.json
 *.local
 
+# Entorno local: nada de aquí se versiona (Vite ignora .env.local por su lado)
+.env
+.env.local
+.env.*.local
+
+# Registro local de skills del agente (índice regenerable, no es fuente del
+# proyecto; si algún día se quiere compartir con el equipo, quitar esta línea)
+.atl/
+
 # Playwright
 test-results/
 
