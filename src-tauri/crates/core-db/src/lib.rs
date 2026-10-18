@@ -81,11 +81,13 @@ pub struct FileDuplicate {
 
 /// Recursive dir-path map (id -> full normalized path with leading '/').
 /// Root row is stored as name "/" (mapped to ""); legacy pre-normalization
-/// rows carry the full path in `name` with parent NULL and are used verbatim.
+/// rows carry the full path in `name` with parent NULL and are trimmed into
+/// the same canonical form the scanner uses (`dir_full_paths`), so the path a
+/// query shows always matches the path the next scan will look for.
 const DIR_PATH_CTE: &str = concat!(
     "WITH RECURSIVE dp(id, p) AS (",
     "  SELECT id, CASE WHEN name = '/' THEN ''",
-    "                  WHEN name LIKE '%/%' THEN rtrim(name, '/')",
+    "                  WHEN name LIKE '%/%' THEN '/' || trim(name, '/')",
     "                  ELSE '/' || name END",
     "  FROM dirs WHERE parent_id IS NULL",
     "  UNION ALL",
