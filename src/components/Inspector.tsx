@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fileKind, formatBytes, formatDate, formatHash } from "../lib/format";
+import { fileKind, formatBytes, formatDate, formatHash, hitFullPath } from "../lib/format";
 import type { Hit } from "../lib/types";
 import {
   describeAudioMeta,
@@ -48,7 +48,7 @@ export default function Inspector() {
   if (selected === null) {
     return (
       <aside className="inspector" aria-label="Detalles">
-        <div className="empty" style={{ minHeight: 240 }}>
+        <div className="empty">
           <span className="empty__icon">
             <IconFile size={24} />
           </span>
@@ -61,11 +61,7 @@ export default function Inspector() {
     );
   }
 
-  const dirPath = selected.path === "/" ? "" : selected.path;
-  const fullPath =
-    selected.container_path === null
-      ? `${dirPath}/${selected.name}`
-      : `${dirPath}/${selected.container_path}/${selected.name}`;
+  const fullPath = hitFullPath(selected);
   const wasted = fileDups.reduce((a, d) => a + d.size, 0);
   const audio = parseAudioMeta(selected.audio_json);
   const image = parseImageMeta(selected.image_json);
@@ -77,10 +73,16 @@ export default function Inspector() {
   return (
     <aside className="inspector" aria-label="Detalles del archivo">
       <div className="inspector-hero">
+        <div className="inspector-hero__head">
+          <span className="inspector-hero__name">{selected.name}</span>
+          <span className="inspector-hero__meta">
+            Ficha {selected.id} · {selected.volume_label}
+            {selected.ext !== null ? ` · .${selected.ext}` : ""}
+          </span>
+        </div>
         <span className="inspector-hero__icon">
-          <KindIcon kind={fileKind(selected.ext)} size={26} />
+          <KindIcon kind={fileKind(selected.ext)} size={34} />
         </span>
-        <span className="inspector-hero__name">{selected.name}</span>
       </div>
 
       <div className="inspector__section">
@@ -92,18 +94,16 @@ export default function Inspector() {
           </div>
           <div className="field">
             <span className="field__key">Ruta</span>
-            <span className="field__value field__value--mono hash-row">
-              <code style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{selected.path}</code>
+            <span className="field__value field__value--mono field__value--wrap hash-row">
+              <code>{selected.path}</code>
               <CopyButton text={fullPath} label="Copiar ruta completa" />
             </span>
           </div>
           {selected.container_path !== null && (
             <div className="field">
               <span className="field__key">Contenido en</span>
-              <span className="field__value field__value--mono">
-                <code style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>
-                  {selected.container_path}
-                </code>
+              <span className="field__value field__value--mono field__value--wrap">
+                <code>{selected.container_path}</code>
               </span>
             </div>
           )}
@@ -155,9 +155,7 @@ export default function Inspector() {
             <IconSpinner size={14} /> Buscando…
           </span>
         ) : fileDups.length === 0 ? (
-          <p className="empty__hint" style={{ textAlign: "left" }}>
-            {noCopiesReason(selected)}
-          </p>
+          <p className="empty__hint">{noCopiesReason(selected)}</p>
         ) : (
           <>
             <div className="field-list">
@@ -166,7 +164,7 @@ export default function Inspector() {
                   <span className="field__key">
                     <IconDuplicates size={12} /> {d.volume_label}
                   </span>
-                  <span className="field__value field__value--mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span className="field__value field__value--mono field__value--truncate">
                     {d.path === "/" ? `/${d.name}` : `${d.path}/${d.name}`} · {formatBytes(d.size)}
                   </span>
                 </div>

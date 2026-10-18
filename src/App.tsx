@@ -8,7 +8,8 @@ import SearchBar, { SearchHelpButton } from "./components/SearchBar";
 import StatusBar from "./components/StatusBar";
 import Toasts from "./components/Toasts";
 import VolumeSidebar from "./components/VolumeSidebar";
-import { IconDisc, IconDuplicates, IconTable } from "./components/icons";
+import { LogoMark } from "./components/Brand";
+import { IconDuplicates, IconTable } from "./components/icons";
 import { useCatalog } from "./stores/catalog";
 import type { SortKey } from "./lib/types";
 
@@ -64,10 +65,11 @@ export default function App() {
       <header className="header">
         <div className="brand">
           <span className="brand-mark">
-            <IconDisc size={18} />
+            <LogoMark size={28} />
           </span>
           <span className="brand-name">
-            CD Catalog <em>Premium</em>
+            CD Catalog
+            <span className="brand-sub">Premium</span>
           </span>
         </div>
 
@@ -125,7 +127,6 @@ export default function App() {
           {view === "results" ? (
             <>
               <div className="results-head" aria-hidden="true">
-                <span />
                 <span>Nombre</span>
                 <span>Volumen</span>
                 <span className="results-head__right">Tamaño</span>

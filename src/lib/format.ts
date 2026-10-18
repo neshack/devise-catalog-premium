@@ -29,6 +29,25 @@ export function formatHash(hash: string | null, keep = 12): string {
   return hash.length <= keep ? hash : `${hash.slice(0, keep)}…`;
 }
 
+/**
+ * Ruta completa de un resultado, tal como la escribiría el usuario.
+ *
+ * Para lo que vive dentro de un ZIP, `path` sólo apunta a la carpeta que
+ * contiene el archivo comprimido: la ruta real es la del contenedor (que ya
+ * viene relativa a la raíz del volumen) más la ruta interna.
+ */
+export function hitFullPath(hit: {
+  path: string;
+  name: string;
+  container_path: string | null;
+}): string {
+  if (hit.container_path !== null) {
+    return `/${hit.container_path.replace(/^\/+/, "")}/${hit.name}`;
+  }
+  const dir = hit.path === "/" ? "" : hit.path;
+  return `${dir}/${hit.name}`;
+}
+
 export type FileKind =
   | "audio"
   | "image"

@@ -69,7 +69,9 @@ test("el inspector muestra los archivos dentro de un ZIP sin extraerlos", async 
   const row = page.getByTestId("result-row").first();
   await expect(row).toBeVisible({ timeout: 10_000 });
   await expect(row).toContainText("DCIM/IMG_9001.jpg");
-  await expect(row).toContainText("dentro de Comprimidos/backup-movil.zip");
+  // En la fila basta el nombre del ZIP; la ruta completa espera en el tooltip.
+  await expect(row).toContainText("dentro de backup-movil.zip");
+  await expect(row).toHaveAttribute("title", "/Comprimidos/backup-movil.zip/DCIM/IMG_9001.jpg");
 
   await row.click();
   const inspector = page.getByRole("complementary", { name: /detalles del archivo/i });
