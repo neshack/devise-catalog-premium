@@ -64,6 +64,8 @@ pub struct SearchHit {
     pub mtime: i64,
     pub path: String,
     pub blake3: Option<String>,
+    pub audio_json: Option<String>,
+    pub image_json: Option<String>,
 }
 
 #[derive(Debug, PartialEq, serde::Serialize)]
@@ -241,11 +243,22 @@ impl Db {
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
     }
-    pub fn update_file(&self, id: i64, size: i64, mtime: i64, blake3: Option<&str>) -> Result<()> {
+    /// Refresh a changed file's metadata. `audio_json`/`image_json` are
+    /// rewritten too, so re-scanning a re-tagged file does not keep the old
+    /// metadata.
+    pub fn update_file(
+        &self,
+        id: i64,
+        size: i64,
+        mtime: i64,
+        blake3: Option<&str>,
+        audio_json: Option<&str>,
+        image_json: Option<&str>,
+    ) -> Result<()> {
         let c = self.conn.lock().map_err(|_| lock_err())?;
         c.execute(
-            "UPDATE files SET size=?2, mtime=?3, blake3=?4 WHERE id=?1",
-            params![id, size, mtime, blake3],
+            "UPDATE files SET size=?2, mtime=?3, blake3=?4, audio_json=?5, image_json=?6 WHERE id=?1",
+            params![id, size, mtime, blake3, audio_json, image_json],
         )?;
         Ok(())
     }
@@ -288,14 +301,14 @@ impl Db {
         let mut sql = if q.fts.is_empty() {
             format!(
                 "{DIR_PATH_CTE} SELECT f.id, f.name, f.size, v.label, f.ext, f.mtime, \
-                 COALESCE(NULLIF(dp.p, ''), '/'), f.blake3 \
+                 COALESCE(NULLIF(dp.p, ''), '/'), f.blake3, f.audio_json, f.image_json \
                  FROM files f JOIN volumes v ON v.id = f.volume_id \
                  LEFT JOIN dp ON dp.id = f.dir_id WHERE 1=1"
             )
         } else {
             format!(
                 "{DIR_PATH_CTE} SELECT f.id, f.name, f.size, v.label, f.ext, f.mtime, \
-                 COALESCE(NULLIF(dp.p, ''), '/'), f.blake3 \
+                 COALESCE(NULLIF(dp.p, ''), '/'), f.blake3, f.audio_json, f.image_json \
                  FROM files_fts ft JOIN files f ON f.id = ft.rowid \
                  JOIN volumes v ON v.id = f.volume_id \
                  LEFT JOIN dp ON dp.id = f.dir_id WHERE files_fts MATCH ?"
@@ -338,6 +351,8 @@ impl Db {
                     mtime: r.get(5)?,
                     path: r.get(6)?,
                     blake3: r.get(7)?,
+                    audio_json: r.get(8)?,
+                    image_json: r.get(9)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;

@@ -239,13 +239,22 @@ pub fn scan_into_db(
                 // Changed metadata: recompute hash (never fail the scan) + UPDATE.
                 let abs = rootp.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
                 let hash = core_hash::blake3_partial(&abs, 65536).ok();
-                db.update_file(id, e.size, e.mtime, hash.as_deref())
-                    .map_err(|e| e.to_string())?;
+                let meta = core_parsers::enrich(&abs, &e.ext);
+                db.update_file(
+                    id,
+                    e.size,
+                    e.mtime,
+                    hash.as_deref(),
+                    meta.audio_json.as_deref(),
+                    meta.image_json.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
             }
             None => {
                 let dir_id = ensure_dir(&db, vid, &dir_rel, &mut dircache)?;
                 let abs = rootp.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
                 let hash = core_hash::blake3_partial(&abs, 65536).ok();
+                let meta = core_parsers::enrich(&abs, &e.ext);
                 batch.push(core_db::NewFile {
                     dir_id,
                     volume_id: vid,
@@ -255,8 +264,8 @@ pub fn scan_into_db(
                     mtime: e.mtime,
                     blake3: hash,
                     container_path: e.container_path,
-                    audio_json: None,
-                    image_json: None,
+                    audio_json: meta.audio_json,
+                    image_json: meta.image_json,
                 });
                 if batch.len() >= 5000 {
                     db.insert_file_batch(&batch).map_err(|e| e.to_string())?;
@@ -338,6 +347,58 @@ mod tests {
                 ("/sub/deep".to_string(), "song.flac".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn scan_stores_audio_and_image_metadata() {
+        let (root, cat) = setup();
+        let db = cat.path().join("t.cdc");
+        fs::write(
+            root.path().join("track.flac"),
+            core_parsers::fixtures::flac("Nina Simone", "Feeling Good"),
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("cover.jpg"),
+            core_parsers::fixtures::jpeg_with_dimensions(640, 480),
+        )
+        .unwrap();
+
+        assert_eq!(scan(&db, root.path()), 2);
+
+        let rows = all_rows(&db);
+        let audio = rows
+            .iter()
+            .find(|h| h.name == "track.flac")
+            .expect("flac row");
+        let audio_json = audio.audio_json.as_deref().expect("stored audio json");
+        assert!(audio_json.contains("Nina Simone"), "got {audio_json}");
+        assert!(audio_json.contains("Feeling Good"), "got {audio_json}");
+
+        let image = rows
+            .iter()
+            .find(|h| h.name == "cover.jpg")
+            .expect("jpg row");
+        let image_json = image.image_json.as_deref().expect("stored image json");
+        assert!(image_json.contains("\"width\":640"), "got {image_json}");
+        assert!(image_json.contains("\"height\":480"), "got {image_json}");
+
+        // A rescan that only changes the file's content must refresh the
+        // metadata too, not keep the stale copy.
+        fs::write(
+            root.path().join("track.flac"),
+            core_parsers::fixtures::flac("Bill Evans", "Waltz for Debby"),
+        )
+        .unwrap();
+        scan(&db, root.path());
+        let rows = all_rows(&db);
+        let audio = rows
+            .iter()
+            .find(|h| h.name == "track.flac")
+            .expect("flac row");
+        let audio_json = audio.audio_json.as_deref().expect("refreshed audio json");
+        assert!(audio_json.contains("Bill Evans"), "got {audio_json}");
+        assert!(!audio_json.contains("Nina Simone"), "got {audio_json}");
     }
 
     #[test]

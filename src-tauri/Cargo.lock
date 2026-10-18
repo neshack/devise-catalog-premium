@@ -373,11 +373,13 @@ dependencies = [
  "core-db",
  "core-export",
  "core-hash",
+ "core-parsers",
  "core-scanner",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "tempfile",
 ]
 
 [[package]]
@@ -594,6 +596,8 @@ dependencies = [
  "anyhow",
  "lofty",
  "rexif",
+ "serde",
+ "serde_json",
  "tempfile",
  "zip",
 ]
