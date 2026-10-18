@@ -60,3 +60,25 @@ test("el inspector muestra los metadatos guardados por el escáner", async ({ pa
   await expect(inspector.getByText("Dimensiones")).toBeVisible();
   await expect(inspector.getByText("4032 × 3024")).toBeVisible();
 });
+
+test("el inspector muestra los archivos dentro de un ZIP sin extraerlos", async ({ page }) => {
+  await page.goto("http://localhost:1420");
+  await page.getByRole("textbox", { name: "Buscar en el catálogo" }).fill("IMG_9001");
+
+  // The row says where the entry lives instead of pretending it is a folder.
+  const row = page.getByTestId("result-row").first();
+  await expect(row).toBeVisible({ timeout: 10_000 });
+  await expect(row).toContainText("DCIM/IMG_9001.jpg");
+  await expect(row).toContainText("dentro de Comprimidos/backup-movil.zip");
+
+  await row.click();
+  const inspector = page.getByRole("complementary", { name: /detalles del archivo/i });
+  await expect(inspector.getByText("Contenido en")).toBeVisible();
+  await expect(inspector.getByText("Comprimidos/backup-movil.zip")).toBeVisible();
+  // Nothing inside an archive is hashed or parsed.
+  await expect(inspector.locator(".field").filter({ hasText: "Hash" })).toContainText("—");
+  // …and the panel must not tell the user to rescan for something a rescan
+  // would never compute.
+  await expect(inspector.getByText(/dentro de un ZIP no se hashean/)).toBeVisible();
+  await expect(inspector.getByText(/vuelve a escanear/)).toHaveCount(0);
+});

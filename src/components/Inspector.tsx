@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { fileKind, formatBytes, formatDate, formatHash } from "../lib/format";
+import type { Hit } from "../lib/types";
 import {
   describeAudioMeta,
   describeImageMeta,
@@ -28,6 +29,19 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
+/** Why the duplicates panel has nothing to show. */
+function noCopiesReason(hit: Hit): string {
+  if (hit.container_path !== null) {
+    // Rescanning will never hash it: entries inside archives are indexed from
+    // the central directory, without opening the container.
+    return "Los archivos dentro de un ZIP no se hashean: extrae este archivo para compararlo con otros.";
+  }
+  if (hit.blake3 === null) {
+    return "Este archivo no tiene hash calculado; vuelve a escanear su volumen para detectar duplicados.";
+  }
+  return "Sin copias idénticas en el catálogo.";
+}
+
 export default function Inspector() {
   const { selected, fileDups, fileDupsLoading } = useCatalog();
 
@@ -47,7 +61,11 @@ export default function Inspector() {
     );
   }
 
-  const fullPath = selected.path === "/" ? `/${selected.name}` : `${selected.path}/${selected.name}`;
+  const dirPath = selected.path === "/" ? "" : selected.path;
+  const fullPath =
+    selected.container_path === null
+      ? `${dirPath}/${selected.name}`
+      : `${dirPath}/${selected.container_path}/${selected.name}`;
   const wasted = fileDups.reduce((a, d) => a + d.size, 0);
   const audio = parseAudioMeta(selected.audio_json);
   const image = parseImageMeta(selected.image_json);
@@ -79,6 +97,16 @@ export default function Inspector() {
               <CopyButton text={fullPath} label="Copiar ruta completa" />
             </span>
           </div>
+          {selected.container_path !== null && (
+            <div className="field">
+              <span className="field__key">Contenido en</span>
+              <span className="field__value field__value--mono">
+                <code style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>
+                  {selected.container_path}
+                </code>
+              </span>
+            </div>
+          )}
           <div className="field">
             <span className="field__key">Tamaño</span>
             <span className="field__value">
@@ -128,9 +156,7 @@ export default function Inspector() {
           </span>
         ) : fileDups.length === 0 ? (
           <p className="empty__hint" style={{ textAlign: "left" }}>
-            {selected.blake3 === null
-              ? "Este archivo no tiene hash calculado; vuelve a escanear su volumen para detectar duplicados."
-              : "Sin copias idénticas en el catálogo."}
+            {noCopiesReason(selected)}
           </p>
         ) : (
           <>

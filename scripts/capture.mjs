@@ -40,5 +40,15 @@ await page.getByRole("textbox", { name: "Buscar en el catálogo" }).fill("size:>
 await page.waitForTimeout(700);
 await shot("06-help-and-chips");
 
+// entries inside a ZIP: indexed without extracting
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+await page.getByRole("tab", { name: /resultados/i }).click();
+await page.getByRole("textbox", { name: "Buscar en el catálogo" }).fill("IMG_9001");
+await page.waitForTimeout(700);
+await page.getByTestId("result-row").first().click();
+await page.waitForTimeout(600);
+await shot("07-zip-entry");
+
 await browser.close();
 console.log("capturas listas");

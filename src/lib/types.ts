@@ -12,6 +12,12 @@ export interface Hit {
   /** Raw `core-parsers` payloads; parse them with `lib/media.ts`. */
   audio_json: string | null;
   image_json: string | null;
+  /**
+   * Archive this hit lives inside, relative to the volume root. `null` for
+   * files on disk; when set, `name` is the path the entry has inside the
+   * archive (see `scan.rs`).
+   */
+  container_path: string | null;
 }
 
 export interface VolumeSummary {

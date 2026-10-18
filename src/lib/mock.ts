@@ -22,6 +22,7 @@ interface MockFile {
   blake3: string | null;
   audio_json: string | null;
   image_json: string | null;
+  container_path: string | null;
 }
 
 const DAY = 86_400;
@@ -39,6 +40,11 @@ interface Seed {
   audio?: { artist?: string; album?: string; bitrate?: number };
   /** Mirrors `files.image_json` as the scanner stores it. */
   image?: { width?: number; height?: number };
+  /**
+   * Mirrors `files.container_path`: the archive this entry lives inside,
+   * relative to the volume root. `name` is then the path inside the archive.
+   */
+  container?: string;
 }
 
 function seeds(): Seed[] {
@@ -52,6 +58,24 @@ function seeds(): Seed[] {
   );
   ["fotos-vacaciones", "proyecto-web", "musica-importada", "backup-movil"].forEach((z, i) =>
     push({ volume: "Backup-12", path: "/Comprimidos", name: `${z}.zip`, ext: "zip", size: (i + 2) * 734_003_217, ageDays: 30 + i * 15 }),
+  );
+  // Contents of those archives: indexed without extracting, so the row name
+  // is the entry's path inside the ZIP and no metadata is parsed for it.
+  [
+    { name: "DCIM/IMG_7001.jpg", size: 3_910_244, container: "Comprimidos/fotos-vacaciones.zip" },
+    { name: "notas-de-viaje.txt", size: 8_412, container: "Comprimidos/fotos-vacaciones.zip" },
+    { name: "src/components/Button.tsx", size: 2_048, container: "Comprimidos/proyecto-web.zip" },
+    { name: "DCIM/IMG_9001.jpg", size: 4_112_088, container: "Comprimidos/backup-movil.zip" },
+  ].forEach((entry, i) =>
+    push({
+      volume: "Backup-12",
+      path: "/Comprimidos",
+      name: entry.name,
+      ext: entry.name.split(".").pop() ?? "txt",
+      size: entry.size,
+      ageDays: 30 + i * 5,
+      container: entry.container,
+    }),
   );
   ["main.py", "catalog.rs", "schema.sql", "app.tsx", "utils.go", "Makefile.txt"].forEach((c, i) =>
     push({ volume: "Backup-12", path: "/Proyectos/catalogo/src", name: c, ext: c.split(".").pop() ?? "txt", size: 1_200 + i * 3_457, ageDays: 3 + i }),
@@ -120,7 +144,8 @@ function buildFiles(): MockFile[] {
   let n = 0;
   return seeds().map((sd) => {
     let blake3: string | null = null;
-    if (sd.ext !== "m3u" && !sd.name.endsWith(".txt")) {
+    // Container entries are never hashed on disk, same as the scanner.
+    if (sd.container === undefined && sd.ext !== "m3u" && !sd.name.endsWith(".txt")) {
       const key = sd.dupOf ? `${sd.volume}/${sd.dupOf}` : `${sd.volume}/${sd.name}`;
       let h = byKey.get(key);
       if (!h) {
@@ -141,6 +166,7 @@ function buildFiles(): MockFile[] {
       blake3,
       audio_json: sd.audio ? JSON.stringify(sd.audio) : null,
       image_json: sd.image ? JSON.stringify(sd.image) : null,
+      container_path: sd.container ?? null,
     };
   });
 }
@@ -161,6 +187,7 @@ function toHit(f: MockFile): Hit {
     blake3: f.blake3,
     audio_json: f.audio_json,
     image_json: f.image_json,
+    container_path: f.container_path,
   };
 }
 
@@ -288,6 +315,7 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
             blake3: null,
             audio_json: null,
             image_json: null,
+            container_path: null,
           });
         }
       }

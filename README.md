@@ -171,6 +171,7 @@ docs/superpowers/
   con copias idénticas por hash, exportación, chips de filtros, modo demo.
 - ✅ Metadatos leídos por el escáner y visibles en el Inspector: ID3 vía
   `lofty` (intérprete, álbum, bitrate) y EXIF vía `rexif` (dimensiones).
-- 🔜 Filas del contenido interno de contenedores: `zip` es el único parser
-  disponible hoy, así que 7z/ISO siguen pendientes.
+- ✅ Contenido de los ZIP indexado sin extraer: una fila por entrada, con el
+  ZIP de origen visible en la fila y en el Inspector.
+- 🔜 7z e ISO siguen pendientes: `zip` es hoy el único parser de contenedores.
 - El catálogo es un archivo: llévalo a otro PC y ábrelo intacto.

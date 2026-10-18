@@ -111,6 +111,15 @@ function Row({
   onSelect: (h: Hit) => void;
   offset: number;
 }) {
+  const dirPath = hit.path === "/" ? "" : hit.path;
+  // Entries inside an archive say so: their `name` is the inner path and
+  // showing the folder alone would read like a normal file on disk.
+  const location =
+    hit.container_path === null ? dirPath : `dentro de ${hit.container_path}`;
+  const fullPath =
+    hit.container_path === null
+      ? `${dirPath}/${hit.name}`
+      : `${dirPath}/${hit.container_path}/${hit.name}`;
   return (
     <div
       data-testid="result-row"
@@ -126,14 +135,14 @@ function Row({
         transform: `translateY(${offset}px)`,
       }}
       onClick={() => onSelect(hit)}
-      title={`${hit.path === "/" ? "" : hit.path}/${hit.name}`}
+      title={fullPath}
     >
       <span className="row__icon">
         <KindIcon kind={fileKind(hit.ext)} size={15} />
       </span>
       <span style={{ minWidth: 0 }}>
         <div className="row__name">{hit.name}</div>
-        <div className="row__path">{hit.path === "/" ? "" : hit.path}</div>
+        <div className="row__path">{location}</div>
       </span>
       <span className="row__volume">{hit.volume_label}</span>
       <span className="row__size">{formatBytes(hit.size)}</span>
