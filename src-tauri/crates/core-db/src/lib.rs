@@ -21,6 +21,15 @@ pub struct VolumeInfo {
     pub indexed_at: Option<i64>,
 }
 
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct VolumeSummary {
+    pub label: String,
+    pub serial: String,
+    pub indexed_at: Option<i64>,
+    pub file_count: i64,
+    pub total_size: i64,
+}
+
 #[derive(Debug)]
 pub struct NewFile {
     pub dir_id: i64,
@@ -51,7 +60,34 @@ pub struct SearchHit {
     pub name: String,
     pub size: i64,
     pub volume_label: String,
+    pub ext: Option<String>,
+    pub mtime: i64,
+    pub path: String,
+    pub blake3: Option<String>,
 }
+
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct FileDuplicate {
+    pub id: i64,
+    pub name: String,
+    pub size: i64,
+    pub volume_label: String,
+    pub path: String,
+}
+
+/// Recursive dir-path map (id -> full normalized path with leading '/').
+/// Root row is stored as name "/" (mapped to ""); legacy pre-normalization
+/// rows carry the full path in `name` with parent NULL and are used verbatim.
+const DIR_PATH_CTE: &str = concat!(
+    "WITH RECURSIVE dp(id, p) AS (",
+    "  SELECT id, CASE WHEN name = '/' THEN ''",
+    "                  WHEN name LIKE '%/%' THEN rtrim(name, '/')",
+    "                  ELSE '/' || name END",
+    "  FROM dirs WHERE parent_id IS NULL",
+    "  UNION ALL",
+    "  SELECT d.id, dp.p || '/' || d.name FROM dirs d JOIN dp ON d.parent_id = dp.id",
+    ")"
+);
 
 #[derive(Debug, PartialEq, serde::Serialize)]
 pub struct DuplicateGroup {
@@ -123,6 +159,27 @@ impl Db {
             })
         })?;
         Ok(rows.next().transpose()?)
+    }
+    /// All volumes with aggregated file counts and total sizes, newest first.
+    pub fn list_volumes(&self) -> Result<Vec<VolumeSummary>> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let mut stmt = c.prepare(
+            "SELECT v.label, v.serial, v.indexed_at, COUNT(f.id), COALESCE(SUM(f.size), 0) \
+             FROM volumes v LEFT JOIN files f ON f.volume_id = v.id \
+             GROUP BY v.id ORDER BY v.indexed_at DESC, v.label ASC",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(VolumeSummary {
+                    label: r.get(0)?,
+                    serial: r.get(1)?,
+                    indexed_at: r.get(2)?,
+                    file_count: r.get(3)?,
+                    total_size: r.get(4)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
     pub fn insert_dir(
         &self,
@@ -229,9 +286,20 @@ impl Db {
         };
         let c = self.conn.lock().map_err(|_| lock_err())?;
         let mut sql = if q.fts.is_empty() {
-            "SELECT f.id, f.name, f.size, v.label FROM files f JOIN volumes v ON v.id = f.volume_id WHERE 1=1".to_string()
+            format!(
+                "{DIR_PATH_CTE} SELECT f.id, f.name, f.size, v.label, f.ext, f.mtime, \
+                 COALESCE(NULLIF(dp.p, ''), '/'), f.blake3 \
+                 FROM files f JOIN volumes v ON v.id = f.volume_id \
+                 LEFT JOIN dp ON dp.id = f.dir_id WHERE 1=1"
+            )
         } else {
-            "SELECT f.id, f.name, f.size, v.label FROM files_fts ft JOIN files f ON f.id = ft.rowid JOIN volumes v ON v.id = f.volume_id WHERE files_fts MATCH ?".to_string()
+            format!(
+                "{DIR_PATH_CTE} SELECT f.id, f.name, f.size, v.label, f.ext, f.mtime, \
+                 COALESCE(NULLIF(dp.p, ''), '/'), f.blake3 \
+                 FROM files_fts ft JOIN files f ON f.id = ft.rowid \
+                 JOIN volumes v ON v.id = f.volume_id \
+                 LEFT JOIN dp ON dp.id = f.dir_id WHERE files_fts MATCH ?"
+            )
         };
         let mut args: Vec<rusqlite::types::Value> = Vec::new();
         if !q.fts.is_empty() {
@@ -266,6 +334,10 @@ impl Db {
                     name: r.get(1)?,
                     size: r.get(2)?,
                     volume_label: r.get(3)?,
+                    ext: r.get(4)?,
+                    mtime: r.get(5)?,
+                    path: r.get(6)?,
+                    blake3: r.get(7)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -283,6 +355,35 @@ impl Db {
                     size: r.get(1)?,
                     count: r.get(2)?,
                     sample_name: r.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+    /// Other files sharing the exact BLAKE3 hash of `file_id` (content
+    /// duplicates), across all volumes. Empty when the file is unique or
+    /// unhashed.
+    pub fn file_duplicates(&self, file_id: i64) -> Result<Vec<FileDuplicate>> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let sql = format!(
+            "{DIR_PATH_CTE} SELECT f2.id, f2.name, f2.size, v.label, \
+             COALESCE(NULLIF(dp.p, ''), '/') \
+             FROM files f \
+             JOIN files f2 ON f2.blake3 = f.blake3 AND f2.id != f.id \
+             JOIN volumes v ON v.id = f2.volume_id \
+             LEFT JOIN dp ON dp.id = f2.dir_id \
+             WHERE f.id = ?1 AND f.blake3 IS NOT NULL \
+             ORDER BY v.label, dp.p, f2.name"
+        );
+        let mut stmt = c.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![file_id], |r| {
+                Ok(FileDuplicate {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    size: r.get(2)?,
+                    volume_label: r.get(3)?,
+                    path: r.get(4)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
