@@ -169,6 +169,8 @@ docs/superpowers/
 - ✅ Escaneo diferencial, búsqueda <100 ms, duplicados por BLAKE3, export.
 - ✅ UI completa: escaneo con progreso en vivo, vista Duplicados, inspector
   con copias idénticas por hash, exportación, chips de filtros, modo demo.
-- 🔜 Filas de contenido interno de ZIP/7z/ISO y metadatos ID3/EXIF visibles
-  en el Inspector (el scan ya guarda hash; parsers listos).
+- ✅ Metadatos leídos por el escáner y visibles en el Inspector: ID3 vía
+  `lofty` (intérprete, álbum, bitrate) y EXIF vía `rexif` (dimensiones).
+- 🔜 Filas del contenido interno de contenedores: `zip` es el único parser
+  disponible hoy, así que 7z/ISO siguen pendientes.
 - El catálogo es un archivo: llévalo a otro PC y ábrelo intacto.

@@ -20,6 +20,8 @@ interface MockFile {
   volume: string;
   path: string;
   blake3: string | null;
+  audio_json: string | null;
+  image_json: string | null;
 }
 
 const DAY = 86_400;
@@ -33,6 +35,10 @@ interface Seed {
   size: number;
   ageDays: number;
   dupOf?: string; // seed key to share a hash with
+  /** Mirrors `files.audio_json` as the scanner stores it. */
+  audio?: { artist?: string; album?: string; bitrate?: number };
+  /** Mirrors `files.image_json` as the scanner stores it. */
+  image?: { width?: number; height?: number };
 }
 
 function seeds(): Seed[] {
@@ -56,13 +62,13 @@ function seeds(): Seed[] {
   push({ volume: "Backup-12", path: "/Descargas", name: "notas-reunion.pdf", ext: "pdf", size: 240_000 + 2 * 91_237, ageDays: 5, dupOf: "notas-reunion.pdf" });
 
   // ── Música-90s: albums ───────────────────────────────────────────────
-  const albums: Array<[string, string[]]> = [
-    ["Nevermind-1991", ["Smells-Like-Teen-Spirit", "Come-As-You-Are", "Lithium", "In-Bloom"]],
-    ["OK-Computer-1997", ["Paranoid-Android", "Karma-Police", "No-Surprises", "Exit-Music"]],
-    ["The-Shape-of-Punk-1999", [" Liberation-Frequency", "New-Noise", "Refused-Are-Dead"]],
-    ["Homework-1997", ["Da-Funk", "Around-the-World", "Burnin"]],
+  const albums: Array<[string, string, string[]]> = [
+    ["Nevermind-1991", "Nirvana", ["Smells-Like-Teen-Spirit", "Come-As-You-Are", "Lithium", "In-Bloom"]],
+    ["OK-Computer-1997", "Radiohead", ["Paranoid-Android", "Karma-Police", "No-Surprises", "Exit-Music"]],
+    ["The-Shape-of-Punk-1999", "Refused", [" Liberation-Frequency", "New-Noise", "Refused-Are-Dead"]],
+    ["Homework-1997", "Daft Punk", ["Da-Funk", "Around-the-World", "Burnin"]],
   ];
-  for (const [album, tracks] of albums) {
+  for (const [album, artist, tracks] of albums) {
     for (const [i, t] of tracks.entries()) {
       push({
         volume: "Música-90s",
@@ -71,6 +77,7 @@ function seeds(): Seed[] {
         ext: "flac",
         size: 28_000_000 + i * 4_213_997,
         ageDays: 400 + i * 3,
+        audio: { artist, album, bitrate: 1411 },
       });
       push({
         volume: "Música-90s",
@@ -79,6 +86,7 @@ function seeds(): Seed[] {
         ext: "mp3",
         size: 6_400_000 + i * 812_311,
         ageDays: 380 + i * 3,
+        audio: { artist, album, bitrate: 320 },
       });
     }
   }
@@ -86,7 +94,15 @@ function seeds(): Seed[] {
 
   // ── Fotos-2024: imágenes y vídeo ─────────────────────────────────────
   ["IMG_4412", "IMG_4413", "IMG_4414", "IMG_5501", "IMG_5502", "DSC_0118", "DSC_0119"].forEach((p, i) =>
-    push({ volume: "Fotos-2024", path: "/2024/07-vacaciones", name: `${p}.jpg`, ext: "jpg", size: 4_800_000 + i * 213_771, ageDays: 70 + i }),
+    push({
+      volume: "Fotos-2024",
+      path: "/2024/07-vacaciones",
+      name: `${p}.jpg`,
+      ext: "jpg",
+      size: 4_800_000 + i * 213_771,
+      ageDays: 70 + i,
+      image: { width: 4032, height: 3024 },
+    }),
   );
   ["IMG_4412", "DSC_0118"].forEach((p, i) =>
     push({ volume: "Fotos-2024", path: "/2024/07-vacaciones/RAW", name: `${p}.nef`, ext: "nef", size: 24_100_000 + i * 1_004_223, ageDays: 70 + i }),
@@ -123,6 +139,8 @@ function buildFiles(): MockFile[] {
       volume: sd.volume,
       path: sd.path,
       blake3,
+      audio_json: sd.audio ? JSON.stringify(sd.audio) : null,
+      image_json: sd.image ? JSON.stringify(sd.image) : null,
     };
   });
 }
@@ -141,6 +159,8 @@ function toHit(f: MockFile): Hit {
     mtime: f.mtime,
     path: f.path,
     blake3: f.blake3,
+    audio_json: f.audio_json,
+    image_json: f.image_json,
   };
 }
 
@@ -266,6 +286,8 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
             volume: label,
             path: "/Documentos recuperados",
             blake3: null,
+            audio_json: null,
+            image_json: null,
           });
         }
       }

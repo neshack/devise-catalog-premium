@@ -1,5 +1,12 @@
 import { useState } from "react";
 import { fileKind, formatBytes, formatDate, formatHash } from "../lib/format";
+import {
+  describeAudioMeta,
+  describeImageMeta,
+  parseAudioMeta,
+  parseImageMeta,
+  type MetaRow,
+} from "../lib/media";
 import { useCatalog } from "../stores/catalog";
 import { IconCheck, IconCopy, IconDuplicates, IconFile, IconSpinner, KindIcon } from "./icons";
 
@@ -42,6 +49,12 @@ export default function Inspector() {
 
   const fullPath = selected.path === "/" ? `/${selected.name}` : `${selected.path}/${selected.name}`;
   const wasted = fileDups.reduce((a, d) => a + d.size, 0);
+  const audio = parseAudioMeta(selected.audio_json);
+  const image = parseImageMeta(selected.image_json);
+  const metaRows: MetaRow[] = [
+    ...(audio !== null ? describeAudioMeta(audio) : []),
+    ...(image !== null ? describeImageMeta(image) : []),
+  ];
 
   return (
     <aside className="inspector" aria-label="Detalles del archivo">
@@ -90,6 +103,20 @@ export default function Inspector() {
           </div>
         </div>
       </div>
+
+      {metaRows.length > 0 && (
+        <div className="inspector__section">
+          <span className="inspector__title">Metadatos</span>
+          <div className="field-list">
+            {metaRows.map(([label, value]) => (
+              <div className="field" key={label}>
+                <span className="field__key">{label}</span>
+                <span className="field__value">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="inspector__section">
         <span className="inspector__title">

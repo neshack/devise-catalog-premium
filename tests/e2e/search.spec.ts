@@ -35,3 +35,28 @@ test("el inspector muestra detalles al seleccionar un resultado", async ({ page 
   await row.click();
   await expect(page.getByText("Copias idénticas").first()).toBeVisible();
 });
+
+test("el inspector muestra los metadatos guardados por el escáner", async ({ page }) => {
+  await page.goto("http://localhost:1420");
+  const search = page.getByRole("textbox", { name: "Buscar en el catálogo" });
+
+  // Audio: ID3 fields land in the panel.
+  await search.fill("Smells-Like-Teen-Spirit");
+  const track = page.getByTestId("result-row").first();
+  await expect(track).toBeVisible({ timeout: 10_000 });
+  await track.click();
+  const inspector = page.getByRole("complementary", { name: /detalles del archivo/i });
+  await expect(inspector.getByText("Intérprete")).toBeVisible();
+  await expect(inspector.getByText("Nirvana")).toBeVisible();
+  await expect(inspector.getByText("1411 kbps")).toBeVisible();
+
+  // Image: EXIF dimensions land in the panel. Wait for the new result set
+  // first: a search that lands after the click clears the selection again.
+  await search.fill("IMG_4412");
+  await expect(page.getByTestId("result-row")).toHaveCount(3);
+  const photo = page.getByTestId("result-row").first();
+  await expect(photo).toBeVisible({ timeout: 10_000 });
+  await photo.click();
+  await expect(inspector.getByText("Dimensiones")).toBeVisible();
+  await expect(inspector.getByText("4032 × 3024")).toBeVisible();
+});

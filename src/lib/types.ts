@@ -9,6 +9,9 @@ export interface Hit {
   mtime: number;
   path: string;
   blake3: string | null;
+  /** Raw `core-parsers` payloads; parse them with `lib/media.ts`. */
+  audio_json: string | null;
+  image_json: string | null;
 }
 
 export interface VolumeSummary {
