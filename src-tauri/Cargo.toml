@@ -19,5 +19,8 @@ core-scanner = { path = "crates/core-scanner" }
 core-hash = { path = "crates/core-hash" }
 core-export = { path = "crates/core-export" }
 
+[dev-dependencies]
+tempfile = "3"
+
 [workspace]
 members = [".", "crates/core-db", "crates/core-hash", "crates/core-parsers", "crates/core-scanner", "crates/core-export"]

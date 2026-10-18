@@ -14,11 +14,11 @@ pub fn cancel_scan() -> Result<(), String> {
 /// Throttled scan progress pushed to the UI (`scan://progress`). `phase` is
 /// "walk" while the directory tree is traversed and "index" while hashing +
 /// DB writes run (the scanner only reports during the walk phase).
-#[derive(Clone, serde::Serialize)]
-struct ScanProgressEvent {
-    phase: &'static str,
-    files_seen: u64,
-    bytes_seen: u64,
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct ScanEvent {
+    pub phase: &'static str,
+    pub files_seen: u64,
+    pub bytes_seen: u64,
 }
 
 /// Cheap stable hex hash for normalized dir paths (NOT a content hash; only a
@@ -162,29 +162,43 @@ fn scan_volume_blocking(
     db_path: &str,
 ) -> Result<u64, String> {
     use tauri::Emitter;
+    let emitter = app.clone();
+    scan_into_db(db_path, root, label, serial, &move |event: ScanEvent| {
+        let _ = emitter.emit("scan://progress", event);
+    })
+}
+
+/// Index `root` into the catalog at `db_path`, reporting progress through
+/// `on_event`. Free of Tauri types on purpose: the whole scan pipeline
+/// (walk, differential sync, enrichment, container expansion) is exercised
+/// from tests by calling this directly.
+///
+/// Differential: files whose size and mtime are unchanged are skipped
+/// entirely (no re-hash, no write); rows that no longer exist on disk are
+/// deleted. Returns the number of files seen during the walk.
+pub fn scan_into_db(
+    db_path: &str,
+    root: &str,
+    label: &str,
+    serial: &str,
+    on_event: &dyn Fn(ScanEvent),
+) -> Result<u64, String> {
     CANCEL.store(false, Ordering::Relaxed);
     let db = core_db::Db::open(Path::new(db_path)).map_err(|e| e.to_string())?;
     let vid = db.insert_volume(label, serial).map_err(|e| e.to_string())?;
     let rootp = Path::new(root).to_path_buf();
-    let emitter = app.clone();
-    let entries = core_scanner::collect_entries(&rootp, &CANCEL, &move |p| {
-        let _ = emitter.emit(
-            "scan://progress",
-            ScanProgressEvent {
-                phase: "walk",
-                files_seen: p.files_seen as u64,
-                bytes_seen: p.bytes_seen,
-            },
-        );
+    let entries = core_scanner::collect_entries(&rootp, &CANCEL, &|p| {
+        on_event(ScanEvent {
+            phase: "walk",
+            files_seen: p.files_seen as u64,
+            bytes_seen: p.bytes_seen,
+        });
     });
-    let _ = app.emit(
-        "scan://progress",
-        ScanProgressEvent {
-            phase: "index",
-            files_seen: entries.len() as u64,
-            bytes_seen: entries.iter().map(|e| e.size.max(0) as u64).sum(),
-        },
-    );
+    on_event(ScanEvent {
+        phase: "index",
+        files_seen: entries.len() as u64,
+        bytes_seen: entries.iter().map(|e| e.size.max(0) as u64).sum(),
+    });
 
     // Snapshot of what's already indexed for differential sync:
     // (normalized_dir_path, file_name) -> (size, mtime, id). Entries removed
@@ -260,4 +274,92 @@ fn scan_volume_blocking(
     db.delete_files(&missing).map_err(|e| e.to_string())?;
     db.delete_empty_dirs(vid).map_err(|e| e.to_string())?;
     Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core_db::{Db, ParsedQuery};
+    use std::fs;
+    use std::path::Path as StdPath;
+
+    /// Every row in the catalog, read through the same query interface the
+    /// app uses (empty query = no MATCH, all rows).
+    fn all_rows(db_path: &StdPath) -> Vec<core_db::SearchHit> {
+        let db = Db::open(db_path).unwrap();
+        db.search(
+            &ParsedQuery {
+                fts: String::new(),
+                ext: None,
+                exts: Vec::new(),
+                min_size: None,
+                max_size: None,
+                volume: None,
+            },
+            1000,
+        )
+        .unwrap()
+    }
+
+    fn scan(db_path: &StdPath, root: &StdPath) -> u64 {
+        scan_into_db(
+            db_path.to_str().unwrap(),
+            root.to_str().unwrap(),
+            "TestVol",
+            "SER-1",
+            &|_| {},
+        )
+        .unwrap()
+    }
+
+    fn setup() -> (tempfile::TempDir, tempfile::TempDir) {
+        (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap())
+    }
+
+    #[test]
+    fn scan_indexes_nested_files_with_dir_paths() {
+        let (root, cat) = setup();
+        let db = cat.path().join("t.cdc");
+        fs::create_dir_all(root.path().join("sub/deep")).unwrap();
+        fs::write(root.path().join("top.txt"), b"hello").unwrap();
+        fs::write(root.path().join("sub/deep/song.flac"), b"world").unwrap();
+
+        assert_eq!(scan(&db, root.path()), 2);
+
+        let mut rows: Vec<(String, String)> = all_rows(&db)
+            .into_iter()
+            .map(|h| (h.path.clone(), h.name.clone()))
+            .collect();
+        rows.sort();
+        assert_eq!(
+            rows,
+            vec![
+                ("/".to_string(), "top.txt".to_string()),
+                ("/sub/deep".to_string(), "song.flac".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn rescan_skips_unchanged_and_deletes_removed_files() {
+        let (root, cat) = setup();
+        let db = cat.path().join("t.cdc");
+        fs::create_dir_all(root.path().join("sub")).unwrap();
+        fs::write(root.path().join("top.txt"), b"hello").unwrap();
+        fs::write(root.path().join("sub/gone.txt"), b"bye").unwrap();
+
+        scan(&db, root.path());
+        let first: Vec<String> = all_rows(&db).into_iter().map(|h| h.name).collect();
+        assert_eq!(first.len(), 2);
+
+        // Unchanged rescan must not duplicate rows.
+        scan(&db, root.path());
+        assert_eq!(all_rows(&db).len(), 2);
+
+        // Removed file disappears, survivors stay.
+        fs::remove_file(root.path().join("sub/gone.txt")).unwrap();
+        scan(&db, root.path());
+        let names: Vec<String> = all_rows(&db).into_iter().map(|h| h.name).collect();
+        assert_eq!(names, vec!["top.txt".to_string()]);
+    }
 }
