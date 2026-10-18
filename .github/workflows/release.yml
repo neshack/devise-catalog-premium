@@ -32,6 +32,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # 22.04 rather than ubuntu-latest: linuxdeploy's bundled `strip` chokes
+          # on the `.relr.dyn` sections newer distros' libraries carry, which
+          # kills AppImage bundling with "failed to run linuxdeploy".
           - { os: ubuntu-22.04, name: linux }
           - { os: windows-latest, name: windows }
           - { os: macos-latest, name: macos }
