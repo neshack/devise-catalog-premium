@@ -196,6 +196,21 @@ pub fn get_volume(db_path: String, label: String) -> Result<Option<core_db::Volu
     db.get_volume(&label).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn list_volumes(db_path: String) -> Result<Vec<core_db::VolumeSummary>, String> {
+    let db = Db::open(Path::new(&db_path)).map_err(|e| e.to_string())?;
+    db.list_volumes().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn file_duplicates(
+    db_path: String,
+    file_id: i64,
+) -> Result<Vec<core_db::FileDuplicate>, String> {
+    let db = Db::open(Path::new(&db_path)).map_err(|e| e.to_string())?;
+    db.file_duplicates(file_id).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{fts_match, parse_raw_query};

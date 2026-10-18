@@ -11,6 +11,16 @@ pub fn cancel_scan() -> Result<(), String> {
     Ok(())
 }
 
+/// Throttled scan progress pushed to the UI (`scan://progress`). `phase` is
+/// "walk" while the directory tree is traversed and "index" while hashing +
+/// DB writes run (the scanner only reports during the walk phase).
+#[derive(Clone, serde::Serialize)]
+struct ScanProgressEvent {
+    phase: &'static str,
+    files_seen: u64,
+    bytes_seen: u64,
+}
+
 /// Cheap stable hex hash for normalized dir paths (NOT a content hash; only a
 /// unique-ish key for dirs so re-scans resolve the same row). No new deps.
 fn dir_hash(normalized: &str) -> String {
@@ -127,20 +137,54 @@ fn dir_full_paths(dirs: &[core_db::DirRow]) -> HashMap<i64, String> {
     out
 }
 
+/// Async so the scan runs off the main thread (a sync command would freeze
+/// the whole window during long walks); progress is streamed via events.
 #[tauri::command]
-pub fn scan_volume(
+pub async fn scan_volume(
+    app: tauri::AppHandle,
     root: String,
     label: String,
     serial: String,
     db_path: String,
 ) -> Result<u64, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        scan_volume_blocking(&app, &root, &label, &serial, &db_path)
+    })
+    .await
+    .map_err(|e| format!("scan task failed: {e}"))?
+}
+
+fn scan_volume_blocking(
+    app: &tauri::AppHandle,
+    root: &str,
+    label: &str,
+    serial: &str,
+    db_path: &str,
+) -> Result<u64, String> {
+    use tauri::Emitter;
     CANCEL.store(false, Ordering::Relaxed);
-    let db = core_db::Db::open(Path::new(&db_path)).map_err(|e| e.to_string())?;
-    let vid = db
-        .insert_volume(&label, &serial)
-        .map_err(|e| e.to_string())?;
-    let rootp = Path::new(&root).to_path_buf();
-    let entries = core_scanner::collect_entries(&rootp, &CANCEL, &|_| {});
+    let db = core_db::Db::open(Path::new(db_path)).map_err(|e| e.to_string())?;
+    let vid = db.insert_volume(label, serial).map_err(|e| e.to_string())?;
+    let rootp = Path::new(root).to_path_buf();
+    let emitter = app.clone();
+    let entries = core_scanner::collect_entries(&rootp, &CANCEL, &move |p| {
+        let _ = emitter.emit(
+            "scan://progress",
+            ScanProgressEvent {
+                phase: "walk",
+                files_seen: p.files_seen as u64,
+                bytes_seen: p.bytes_seen,
+            },
+        );
+    });
+    let _ = app.emit(
+        "scan://progress",
+        ScanProgressEvent {
+            phase: "index",
+            files_seen: entries.len() as u64,
+            bytes_seen: entries.iter().map(|e| e.size.max(0) as u64).sum(),
+        },
+    );
 
     // Snapshot of what's already indexed for differential sync:
     // (normalized_dir_path, file_name) -> (size, mtime, id). Entries removed

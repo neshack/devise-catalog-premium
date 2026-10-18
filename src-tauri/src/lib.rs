@@ -18,6 +18,8 @@ pub fn run() {
             commands::search::search,
             commands::search::list_duplicates,
             commands::search::get_volume,
+            commands::search::list_volumes,
+            commands::search::file_duplicates,
             commands::export::export_csv,
             commands::export::export_json,
             commands::export::export_html
