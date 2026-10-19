@@ -5,6 +5,9 @@ test("buscar *.mp3 muestra resultados en modo demo", async ({ page }) => {
   await page.getByRole("textbox", { name: "Buscar en el catálogo" }).fill("*.mp3");
   await expect(page.getByTestId("result-row").first()).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText("CD Catalog", { exact: false }).first()).toBeVisible();
+  // The footer names the build that is running, so a reinstall can be checked
+  // by looking at it (the assertion stays version-agnostic on purpose).
+  await expect(page.locator(".statusbar").getByText(/^v\d+\.\d+\.\d+$/)).toBeVisible();
 });
 
 test("la barra lateral lista volúmenes y filtra al hacer clic", async ({ page }) => {

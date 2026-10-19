@@ -7,6 +7,9 @@ import { invoke } from "@tauri-apps/api/core";
 import type { ScanProgress } from "./types";
 import { mockCall, onScanProgress as onMockScanProgress } from "./mock";
 
+/** Versión del build que corre en la ventana (inyectada desde package.json). */
+export const APP_VERSION = __APP_VERSION__;
+
 export const isDemo: boolean = typeof window === "undefined" || !("__TAURI_INTERNALS__" in window);
 
 export async function call<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {

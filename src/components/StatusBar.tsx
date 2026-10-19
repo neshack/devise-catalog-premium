@@ -1,5 +1,5 @@
 import { formatCount } from "../lib/format";
-import { isDemo } from "../lib/ipc";
+import { APP_VERSION, isDemo } from "../lib/ipc";
 import { useCatalog } from "../stores/catalog";
 
 /** Lámparas de estado: ámbar = atención/vivo · rojo = falla · verde = sano. */
@@ -31,6 +31,9 @@ export default function StatusBar() {
         <span className="mono">{formatCount(totalFiles)}</span> archivos
       </span>
       <span className="statusbar__item">100 % local</span>
+      <span className="statusbar__item" title="Versión instalada">
+        <span className="mono">v{APP_VERSION}</span>
+      </span>
     </footer>
   );
 }
