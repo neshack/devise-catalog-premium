@@ -29,6 +29,22 @@ export function formatHash(hash: string | null, keep = 12): string {
   return hash.length <= keep ? hash : `${hash.slice(0, keep)}…`;
 }
 
+/** Seconds left, said the way a person would say it. `null` = not knowable. */
+export function formatEta(secs: number | null): string | null {
+  if (secs === null || !Number.isFinite(secs)) return null;
+  if (secs < 60) return `${Math.max(1, Math.round(secs))} s`;
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins} min`;
+  const hours = Math.floor(mins / 60);
+  return `${hours} h ${mins % 60} min`;
+}
+
+/** Percentage of a total that may not exist yet: `null` is an answer too. */
+export function percentOf(seen: number, total: number | null): number | null {
+  if (total === null || total <= 0) return null;
+  return Math.min(100, Math.round((seen / total) * 100));
+}
+
 /**
  * Ruta completa de un resultado, tal como la escribiría el usuario.
  *

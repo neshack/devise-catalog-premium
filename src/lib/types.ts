@@ -43,10 +43,76 @@ export interface FileDuplicate {
   path: string;
 }
 
+/** Live scan figures pushed by the backend while it works (`scan://progress`). */
 export interface ScanProgress {
+  run_id: number;
+  /** `walk` while folders are being read, `index` while rows are written. */
   phase: "walk" | "index";
+  state: ScanEventState;
   files_seen: number;
   bytes_seen: number;
+  /** An estimate during the walk (the previous scan's count), exact while indexing. */
+  files_total: number | null;
+  bytes_total: number | null;
+  current_path: string | null;
+  error_count: number;
+  bytes_per_sec: number | null;
+  eta_secs: number | null;
+}
+
+/** What a scan can be doing in this process, plus how it ended. */
+export type ScanEventState =
+  | "idle"
+  | "running"
+  | "paused"
+  | "cancelling"
+  | "completed"
+  | "cancelled"
+  | "failed";
+
+/** Terminal states mean the strip can say what happened and stop moving. */
+export const SCAN_DONE_STATES: ScanEventState[] = ["completed", "cancelled", "failed"];
+
+export type ScanRunState =
+  | "running"
+  | "paused"
+  | "interrupted"
+  | "completed"
+  | "cancelled"
+  | "failed";
+
+/**
+ * A scan attempt as the catalog remembers it. This is what makes "dónde se
+ * quedó" answerable after the app was killed: the row outlives the process.
+ */
+export interface ScanRun {
+  id: number;
+  volume_id: number;
+  volume_label: string;
+  volume_serial: string;
+  root: string;
+  state: ScanRunState;
+  phase: "walk" | "index" | "done";
+  files_seen: number;
+  bytes_seen: number;
+  files_total: number | null;
+  bytes_total: number | null;
+  current_path: string | null;
+  error_count: number;
+  error: string | null;
+  started_at: number;
+  heartbeat_at: number;
+}
+
+export interface ScanStatus {
+  live: "idle" | "running" | "paused" | "cancelling";
+  run: ScanRun | null;
+}
+
+export interface ScanOutcome {
+  run_id: number;
+  files_seen: number;
+  state: "completed" | "cancelled" | "failed";
 }
 
 export type ExportFormat = "csv" | "json" | "html";

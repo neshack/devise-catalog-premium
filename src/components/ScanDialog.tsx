@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { formatBytes, formatCount } from "../lib/format";
+import { formatBytes, formatCount, formatEta, percentOf } from "../lib/format";
 import { useCatalog } from "../stores/catalog";
 import { IconAlert, IconScan, IconSpinner, IconX } from "./icons";
 
@@ -24,11 +24,13 @@ export default function ScanDialog() {
   useEffect(() => {
     if (!scanOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !scan.running) setScanOpen(false);
+      // Closing the dialog never stops the scan: the strip above the list
+      // keeps telling what is happening, so the window is the user's again.
+      if (e.key === "Escape") setScanOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [scanOpen, scan.running, setScanOpen]);
+  }, [scanOpen, setScanOpen]);
 
   if (!scanOpen) return null;
 
@@ -53,6 +55,8 @@ export default function ScanDialog() {
 
   const running = scan.running;
   const done = !running && scan.lastCount !== null;
+  const pct = percentOf(scan.filesSeen, scan.filesTotal);
+  const eta = formatEta(scan.etaSecs);
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && !running && setScanOpen(false)}>
@@ -60,11 +64,9 @@ export default function ScanDialog() {
         <div className="modal__head">
           <IconScan size={18} />
           <span className="modal__title">Escanear volumen</span>
-          {!running && (
-            <button className="btn btn--ghost btn--icon" aria-label="Cerrar" onClick={() => setScanOpen(false)}>
-              <IconX size={15} />
-            </button>
-          )}
+          <button className="btn btn--ghost btn--icon" aria-label="Cerrar" onClick={() => setScanOpen(false)}>
+            <IconX size={15} />
+          </button>
         </div>
 
         <div className="modal__body">
@@ -74,23 +76,62 @@ export default function ScanDialog() {
                 <>
                   <div className="scan-phase">
                     <IconSpinner size={15} />
-                    {scan.phase === "index"
-                      ? "Indexando en el catálogo…"
-                      : "Recorriendo la estructura de carpetas…"}
+                    {scan.state === "paused"
+                      ? "Escaneo en pausa: reanúdalo desde la tira superior."
+                      : scan.phase === "index"
+                        ? "Indexando en el catálogo…"
+                        : "Recorriendo la estructura de carpetas…"}
                   </div>
-                  <div className="progress" role="progressbar" aria-label="Progreso del escaneo">
-                    <div className="progress__bar progress__bar--indeterminate" />
+                  <div
+                    className="progress"
+                    role="progressbar"
+                    aria-label="Progreso del escaneo"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={pct ?? undefined}
+                  >
+                    {pct !== null ? (
+                      <div className="progress__bar" style={{ width: `${pct}%` }} />
+                    ) : (
+                      <div className="progress__bar progress__bar--indeterminate" />
+                    )}
                   </div>
                   <div className="scan-stats">
                     <div className="stat">
                       <span className="stat__value">{formatCount(scan.filesSeen)}</span>
-                      <span className="stat__label">archivos vistos</span>
+                      <span className="stat__label">
+                        {scan.filesTotal !== null
+                          ? `de ~${formatCount(scan.filesTotal)} archivos`
+                          : "archivos vistos"}
+                      </span>
                     </div>
+                    {pct !== null && (
+                      <div className="stat">
+                        <span className="stat__value">{pct} %</span>
+                        <span className="stat__label">completado</span>
+                      </div>
+                    )}
+                    {eta !== null && (
+                      <div className="stat">
+                        <span className="stat__value">{eta}</span>
+                        <span className="stat__label">restante</span>
+                      </div>
+                    )}
                     <div className="stat">
                       <span className="stat__value">{formatBytes(scan.bytesSeen)}</span>
                       <span className="stat__label">procesados</span>
                     </div>
                   </div>
+                  {scan.currentPath !== null && (
+                    <p className="form-field__help mono" title={scan.currentPath}>
+                      {scan.currentPath}
+                    </p>
+                  )}
+                  {scan.errorCount > 0 && (
+                    <p className="form-field__help">
+                      {formatCount(scan.errorCount)} rutas no se pudieron leer; quedan anotadas en el catálogo.
+                    </p>
+                  )}
                   {scan.error !== null && (
                     <p className="form-field__error" role="alert">
                       <IconAlert size={12} /> {scan.error}
@@ -98,7 +139,7 @@ export default function ScanDialog() {
                   )}
                 </>
               ) : (
-                <p style={{ fontSize: 13.5 }}>
+                <p className="scan-summary">
                   Escaneo finalizado: <strong>{formatCount(scan.lastCount ?? 0)}</strong> archivos procesados.
                   El volumen ya está disponible en la barra lateral y en las búsquedas.
                 </p>
@@ -138,7 +179,7 @@ export default function ScanDialog() {
               </div>
               <div className="form-field">
                 <label className="form-field__label" htmlFor="scan-serial">
-                  Nº de serie <span style={{ color: "var(--fg-faint)", fontWeight: 400 }}>(opcional)</span>
+                  Nº de serie <span className="form-field__optional">(opcional)</span>
                 </label>
                 <input
                   id="scan-serial"

@@ -18,7 +18,7 @@ export default function StatusBar() {
       </span>
       {scan.running && (
         <span className="status-scan">
-          <i className="lamp lamp--hot" aria-hidden="true" />
+          <i className="lamp lamp--live" aria-hidden="true" />
           Escaneando… <span className="mono">{formatCount(scan.filesSeen)}</span> archivos
         </span>
       )}

@@ -7,7 +7,9 @@ import type {
   DuplicateGroup,
   FileDuplicate,
   Hit,
+  ScanOutcome,
   ScanProgress,
+  ScanRun,
   VolumeSummary,
 } from "./types";
 
@@ -174,6 +176,39 @@ function buildFiles(): MockFile[] {
 const files: MockFile[] = buildFiles();
 const scanListeners = new Set<(p: ScanProgress) => void>();
 let scanTimer: ReturnType<typeof setInterval> | null = null;
+// Demo bookkeeping so the strip behaves like the real thing: a pause that
+// keeps beating, a run that survives in the catalog, a cancel that closes it.
+let scanPaused = false;
+let scanProgress: ScanProgress | null = null;
+let scanFinish: ((outcome: ScanOutcome) => void) | null = null;
+// The demo's catalog lives in localStorage, so reloading the page mid-scan
+// leaves the same evidence a killed app leaves behind.
+const DEMO_RUN_KEY = "cd-catalog-demo-run";
+
+function loadDemoRun(): ScanRun | null {
+  try {
+    const raw = localStorage.getItem(DEMO_RUN_KEY);
+    return raw === null ? null : (JSON.parse(raw) as ScanRun);
+  } catch {
+    return null;
+  }
+}
+
+function saveDemoRun(run: ScanRun | null): void {
+  try {
+    if (run === null) localStorage.removeItem(DEMO_RUN_KEY);
+    else localStorage.setItem(DEMO_RUN_KEY, JSON.stringify(run));
+  } catch {
+    // Modo privado sin almacenamiento: el demo sigue, sólo no recuerda.
+  }
+}
+
+function setRun(run: ScanRun | null): void {
+  lastRun = run;
+  saveDemoRun(run);
+}
+
+let lastRun: ScanRun | null = loadDemoRun();
 
 function toHit(f: MockFile): Hit {
   return {
@@ -219,6 +254,7 @@ interface MockArgs {
   file_id?: number;
   root?: string;
   label?: string;
+  serial?: string;
   out_path?: string | null;
 }
 
@@ -320,30 +356,140 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
         }
       }
       const total = 42;
+      const bytesTotal = total * 1_204_112;
+      const runId = (lastRun?.id ?? 0) + 1;
+      const root = String(args.root ?? "/media/demo");
       let seen = 0;
+      scanPaused = false;
+      // The row exists before the first file is read, exactly like the real
+      // one: it is what makes an interruption visible in the demo too.
+      setRun({
+        id: runId,
+        volume_id: 99,
+        volume_label: label,
+        volume_serial: "DEMO",
+        root,
+        state: "running",
+        phase: "walk",
+        files_seen: 0,
+        bytes_seen: 0,
+        files_total: total,
+        bytes_total: bytesTotal,
+        current_path: null,
+        error_count: 0,
+        error: null,
+        started_at: Math.floor(Date.now() / 1000),
+        heartbeat_at: Math.floor(Date.now() / 1000),
+      });
       return new Promise((resolve) => {
         if (scanTimer) clearInterval(scanTimer);
+        scanFinish = (outcome) => {
+          if (scanTimer) clearInterval(scanTimer);
+          scanTimer = null;
+          scanFinish = null;
+          resolve(outcome as T);
+        };
         scanTimer = setInterval(() => {
+          if (scanPaused) {
+            // A paused scan keeps saying so, exactly like the real one does.
+            if (scanProgress) for (const l of scanListeners) l({ ...scanProgress, state: "paused" });
+            return;
+          }
           seen += Math.ceil(total / 12);
-          const done = seen >= total;
-          const p: ScanProgress = {
+          const filesSeen = Math.min(seen, total);
+          const done = filesSeen >= total;
+          scanProgress = {
+            run_id: runId,
             phase: done ? "index" : "walk",
-            files_seen: Math.min(seen, total),
-            bytes_seen: Math.min(seen, total) * 1_204_112,
+            state: done ? "completed" : "running",
+            files_seen: filesSeen,
+            bytes_seen: filesSeen * 1_204_112,
+            files_total: total,
+            bytes_total: bytesTotal,
+            current_path: done
+              ? null
+              : `/Documentos recuperados/archivo-recuperado-${String(filesSeen).padStart(3, "0")}.docx`,
+            error_count: 0,
+            bytes_per_sec: 7_400_000,
+            eta_secs: done ? null : Math.max(1, Math.ceil(((total - filesSeen) / total) * 5)),
           };
-          for (const l of scanListeners) l(p);
+          for (const l of scanListeners) l(scanProgress);
+          if (lastRun !== null) {
+            setRun({
+              ...lastRun,
+              phase: scanProgress.phase,
+              files_seen: filesSeen,
+              bytes_seen: scanProgress.bytes_seen,
+              current_path: scanProgress.current_path,
+              heartbeat_at: Math.floor(Date.now() / 1000),
+            });
+          }
           if (done) {
-            if (scanTimer) clearInterval(scanTimer);
-            scanTimer = null;
-            setTimeout(() => resolve(total as T), 350);
+            setRun({
+              id: runId,
+              volume_id: 99,
+              volume_label: label,
+              volume_serial: "DEMO",
+              root,
+              state: "completed",
+              phase: "done",
+              files_seen: total,
+              bytes_seen: bytesTotal,
+              files_total: total,
+              bytes_total: bytesTotal,
+              current_path: null,
+              error_count: 0,
+              error: null,
+              started_at: Math.floor(Date.now() / 1000),
+              heartbeat_at: Math.floor(Date.now() / 1000),
+            });
+            setTimeout(() => scanFinish?.({ run_id: runId, files_seen: total, state: "completed" }), 350);
           }
         }, 160);
       });
     }
     case "cancel_scan": {
+      if (scanProgress) {
+        if (lastRun !== null) setRun({ ...lastRun, state: "cancelled" });
+        for (const l of scanListeners) l({ ...scanProgress, state: "cancelled" });
+        scanFinish?.({ run_id: scanProgress.run_id, files_seen: scanProgress.files_seen, state: "cancelled" });
+      }
       if (scanTimer) clearInterval(scanTimer);
       scanTimer = null;
       return delay(undefined as T);
+    }
+    case "pause_scan": {
+      scanPaused = scanTimer !== null;
+      return delay(undefined as T);
+    }
+    case "resume_scan": {
+      scanPaused = false;
+      if (scanTimer !== null) return delay(false as T);
+      // Nothing live to unpause: a dead run has to be walked again, which is
+      // what the real resume does when the process that started it is gone.
+      if (lastRun !== null && lastRun.state !== "completed" && lastRun.state !== "cancelled") {
+        return mockCall("scan_volume", {
+          root: lastRun.root,
+          label: lastRun.volume_label,
+          serial: lastRun.volume_serial,
+        }) as Promise<T>;
+      }
+      return delay(false as T);
+    }
+    case "scan_status": {
+      return delay({
+        live: scanTimer !== null ? (scanPaused ? "paused" : "running") : "idle",
+        run: lastRun,
+      } as T);
+    }
+    case "recover_stale_scans": {
+      // A run still marked live when the page reloads belongs to a session
+      // that is gone: the demo says so instead of pretending it never ran.
+      if (lastRun !== null && lastRun.state === "running") {
+        setRun({ ...lastRun, state: "interrupted" });
+        return delay(1 as T);
+      }
+      return delay(0 as T);
     }
     default:
       return Promise.reject(new Error(`comando no disponible en modo demo: ${cmd}`));

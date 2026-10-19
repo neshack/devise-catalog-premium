@@ -1,14 +1,20 @@
 import { create } from "zustand";
+import { formatCount } from "../lib/format";
 import { call, onScanProgress, resolveDbPath } from "../lib/ipc";
 import type {
   DuplicateGroup,
   ExportFormat,
   FileDuplicate,
   Hit,
+  ScanEventState,
+  ScanOutcome,
+  ScanRun,
+  ScanStatus,
   SortDir,
   SortKey,
   VolumeSummary,
 } from "../lib/types";
+import { SCAN_DONE_STATES } from "../lib/types";
 
 export type View = "results" | "duplicates";
 export type ToastKind = "success" | "error" | "info";
@@ -20,13 +26,43 @@ export interface Toast {
 }
 
 interface ScanState {
+  /** True while this process is walking or indexing. */
   running: boolean;
+  /** What the scan is doing right now, or how the last one ended. */
+  state: ScanEventState;
   phase: "walk" | "index" | null;
   filesSeen: number;
   bytesSeen: number;
+  /** Estimated while walking, exact while indexing. */
+  filesTotal: number | null;
+  bytesTotal: number | null;
+  /** Where the walk is right now: the answer to "dónde se quedó". */
+  currentPath: string | null;
+  errorCount: number;
+  bytesPerSec: number | null;
+  etaSecs: number | null;
   error: string | null;
   lastCount: number | null;
+  /** The last attempt as the catalog remembers it, dead or alive. */
+  run: ScanRun | null;
 }
+
+const IDLE_SCAN: ScanState = {
+  running: false,
+  state: "idle",
+  phase: null,
+  filesSeen: 0,
+  bytesSeen: 0,
+  filesTotal: null,
+  bytesTotal: null,
+  currentPath: null,
+  errorCount: 0,
+  bytesPerSec: null,
+  etaSecs: null,
+  error: null,
+  lastCount: null,
+  run: null,
+};
 
 interface CatalogState {
   dbPath: string;
@@ -69,6 +105,13 @@ interface CatalogState {
   setScanOpen: (open: boolean) => void;
   runScan: (root: string, label: string, serial: string) => Promise<void>;
   cancelScan: () => Promise<void>;
+  pauseScan: () => Promise<void>;
+  /** Continue where the last attempt stopped: unpause, or restart the walk. */
+  resumeScan: () => Promise<void>;
+  /** Re-read what the catalog remembers, after sweeping runs of dead processes. */
+  refreshScan: () => Promise<void>;
+  /** Close the books on a scan that ended on its own. */
+  finishScan: (state: ScanEventState, filesSeen: number, errorCount: number) => Promise<void>;
   runExport: (fmt: ExportFormat) => Promise<void>;
   pushToast: (kind: ToastKind, text: string) => void;
   dismissToast: (id: number) => void;
@@ -100,18 +143,38 @@ export const useCatalog = create<CatalogState>((set, get) => ({
   dupLoading: false,
   dupError: null,
 
-  scan: { running: false, phase: null, filesSeen: 0, bytesSeen: 0, error: null, lastCount: null },
+  scan: IDLE_SCAN,
   scanOpen: false,
 
   toasts: [],
 
   init: async () => {
     set({ dbPath: await resolveDbPath() });
-    const off = await onScanProgress((p) =>
-      set({ scan: { ...get().scan, running: true, phase: p.phase, filesSeen: p.files_seen, bytesSeen: p.bytes_seen } }),
-    );
+    const off = await onScanProgress((p) => {
+      const terminal = SCAN_DONE_STATES.includes(p.state);
+      set((s) => ({
+        scan: {
+          ...s.scan,
+          running: !terminal && p.state !== "idle",
+          state: p.state,
+          phase: p.phase,
+          filesSeen: p.files_seen,
+          bytesSeen: p.bytes_seen,
+          filesTotal: p.files_total,
+          bytesTotal: p.bytes_total,
+          currentPath: p.current_path,
+          errorCount: p.error_count,
+          bytesPerSec: p.bytes_per_sec,
+          etaSecs: p.eta_secs,
+        },
+      }));
+      // The scan is the only thing that ends without the UI asking, so the
+      // story of its ending (and the volumes it changed) is told from here.
+      if (terminal) void get().finishScan(p.state, p.files_seen, p.error_count);
+    });
     void off; // unsubscribe handled by app lifetime (single-page session)
     await get().refreshVolumes();
+    await get().refreshScan();
   },
 
   setQuery: (query) => set({ query }),
@@ -186,20 +249,71 @@ export const useCatalog = create<CatalogState>((set, get) => ({
   setScanOpen: (scanOpen) => set({ scanOpen }),
 
   runScan: async (root, label, serial) => {
-    set({ scan: { running: true, phase: "walk", filesSeen: 0, bytesSeen: 0, error: null, lastCount: null } });
+    set({ scan: { ...IDLE_SCAN, running: true, state: "running", phase: "walk" } });
     try {
-      const total = await call<number>("scan_volume", {
+      const outcome = await call<ScanOutcome>("scan_volume", {
         dbPath: get().dbPath,
         root,
         label,
         serial: serial || `AUTO-${Date.now()}`,
       });
-      set({ scan: { ...get().scan, running: false, phase: null, lastCount: total } });
+      set({ scan: { ...get().scan, running: false, state: "idle", phase: null, lastCount: outcome.files_seen } });
       await get().refreshVolumes();
-      get().pushToast("success", `Escaneo completado: ${total} archivos procesados en «${label}».`);
+      await get().refreshScan();
     } catch (e) {
-      set({ scan: { ...get().scan, running: false, phase: null, error: String(e) } });
+      set({ scan: { ...get().scan, running: false, state: "idle", phase: null, error: String(e) } });
+      // The run row already knows more than this promise does (it may have
+      // been cancelled or interrupted rather than failed).
+      await get().refreshScan();
       get().pushToast("error", `Error al escanear: ${String(e)}`);
+    }
+  },
+
+  pauseScan: async () => {
+    try {
+      await call("pause_scan", { dbPath: get().dbPath });
+    } catch (e) {
+      get().pushToast("error", `No se pudo pausar: ${String(e)}`);
+    }
+  },
+
+  resumeScan: async () => {
+    try {
+      // Unpausing returns at once; restarting a dead run returns when the walk
+      // it started is over, so both paths end with the same refresh.
+      const restarted = await call<boolean>("resume_scan", { dbPath: get().dbPath });
+      set({ scan: { ...get().scan, running: true, state: "running", error: null } });
+      if (restarted) get().pushToast("info", "Reanudando el escaneo desde donde se quedó…");
+      await get().refreshVolumes();
+      await get().refreshScan();
+    } catch (e) {
+      get().pushToast("error", `No se pudo reanudar: ${String(e)}`);
+    }
+  },
+
+  refreshScan: async () => {
+    try {
+      // A run that never beat again belongs to a process that is gone: close
+      // it before reading, so what the strip shows is already the truth.
+      await call("recover_stale_scans", { dbPath: get().dbPath });
+      const status = await call<ScanStatus>("scan_status", { dbPath: get().dbPath });
+      set((s) => ({ scan: { ...s.scan, run: status.run } }));
+    } catch {
+      // A catalog with no runs yet (or one just created) has nothing to say.
+    }
+  },
+
+  finishScan: async (state, filesSeen, errorCount) => {
+    await get().refreshVolumes();
+    await get().refreshScan();
+    if (state === "completed") {
+      const tail =
+        errorCount > 0 ? ` ${formatCount(errorCount)} rutas no se pudieron leer.` : "";
+      get().pushToast("success", `Escaneo completado: ${formatCount(filesSeen)} archivos.${tail}`);
+    } else if (state === "cancelled") {
+      get().pushToast("info", `Escaneo cancelado tras ${formatCount(filesSeen)} archivos.`);
+    } else {
+      get().pushToast("error", "El escaneo se interrumpió por un error.");
     }
   },
 

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import DuplicatesPanel from "./components/DuplicatesPanel";
 import ExportMenu from "./components/ExportMenu";
 import Inspector from "./components/Inspector";
+import ReadingStrip from "./components/ReadingStrip";
 import ResultsList from "./components/ResultsList";
 import ScanDialog from "./components/ScanDialog";
 import SearchBar, { SearchHelpButton } from "./components/SearchBar";
@@ -81,6 +82,8 @@ export default function App() {
           <ExportMenu />
         </div>
       </header>
+
+      <ReadingStrip />
 
       <div className="app-body">
         <VolumeSidebar />
