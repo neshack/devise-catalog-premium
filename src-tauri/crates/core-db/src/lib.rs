@@ -2,7 +2,6 @@ use anyhow::Result;
 use rusqlite::{params, Connection};
 use std::path::Path;
 use std::sync::Mutex;
-
 pub struct Db {
     conn: Mutex<Connection>,
 }
@@ -126,6 +125,74 @@ pub struct FileRow {
     pub mtime: i64,
     /// Set when the row lives inside an archive instead of on disk.
     pub container_path: Option<String>,
+}
+
+/// A scan attempt as persisted, joined with the volume it targets.
+///
+/// `state` is one of `running`, `paused`, `interrupted`, `completed`,
+/// `cancelled`, `failed`; `phase` is `walk`, `index` or `done`. Counters are
+/// what the last beat saw, which is exactly what the UI needs to say where a
+/// scan stopped after the process died.
+#[derive(Debug, PartialEq, Clone, serde::Serialize)]
+pub struct ScanRun {
+    pub id: i64,
+    pub volume_id: i64,
+    pub volume_label: String,
+    pub volume_serial: String,
+    pub root: String,
+    pub state: String,
+    pub phase: String,
+    pub files_seen: i64,
+    pub bytes_seen: i64,
+    pub files_total: Option<i64>,
+    pub bytes_total: Option<i64>,
+    pub current_path: Option<String>,
+    pub error_count: i64,
+    pub error: Option<String>,
+    pub started_at: i64,
+    pub heartbeat_at: i64,
+}
+
+/// The numbers a live scan mirrors on every beat. Owned fields on purpose:
+/// a beat is built inside a function that also holds the borrow of the
+/// session's current path, and borrowing out of that would fight the checker
+/// for no benefit (one beat every couple of seconds).
+#[derive(Debug, Default, Clone)]
+pub struct RunBeat {
+    pub phase: String,
+    pub files_seen: i64,
+    pub bytes_seen: i64,
+    pub files_total: Option<i64>,
+    pub bytes_total: Option<i64>,
+    pub current_path: Option<String>,
+    pub error_count: i64,
+}
+
+/// Every scan-run field plus the volume it targets, in the order
+/// [`scan_run_row`] reads them.
+const SCAN_RUN_SELECT: &str = "SELECT r.id, r.volume_id, v.label, v.serial, r.root, r.state, r.phase, \
+     r.files_seen, r.bytes_seen, r.files_total, r.bytes_total, r.current_path, r.error_count, r.error, \
+     r.started_at, r.heartbeat_at FROM scan_runs r JOIN volumes v ON v.id = r.volume_id";
+
+fn scan_run_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<ScanRun> {
+    Ok(ScanRun {
+        id: r.get(0)?,
+        volume_id: r.get(1)?,
+        volume_label: r.get(2)?,
+        volume_serial: r.get(3)?,
+        root: r.get(4)?,
+        state: r.get(5)?,
+        phase: r.get(6)?,
+        files_seen: r.get(7)?,
+        bytes_seen: r.get(8)?,
+        files_total: r.get(9)?,
+        bytes_total: r.get(10)?,
+        current_path: r.get(11)?,
+        error_count: r.get(12)?,
+        error: r.get(13)?,
+        started_at: r.get(14)?,
+        heartbeat_at: r.get(15)?,
+    })
 }
 
 fn lock_err() -> anyhow::Error {
@@ -428,6 +495,151 @@ impl Db {
                     volume: r.get(2)?,
                 })
             })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Open a scan attempt. The row exists before a single file is read so an
+    /// interrupted process still leaves a trace of what it was doing.
+    pub fn start_scan_run(&self, volume_id: i64, root: &str, phase: &str) -> Result<i64> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        c.execute(
+            "INSERT INTO scan_runs(volume_id, root, state, phase, started_at, heartbeat_at) \
+             VALUES(?1, ?2, 'running', ?3, strftime('%s','now'), strftime('%s','now'))",
+            params![volume_id, root, phase],
+        )?;
+        Ok(c.last_insert_rowid())
+    }
+
+    /// Mirror live counters and prove the scan is still alive.
+    pub fn beat_scan_run(&self, run_id: i64, beat: &RunBeat) -> Result<()> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        c.execute(
+            "UPDATE scan_runs SET phase=?2, files_seen=?3, bytes_seen=?4, files_total=?5, \
+             bytes_total=?6, current_path=?7, error_count=?8, heartbeat_at=strftime('%s','now') \
+             WHERE id=?1",
+            params![
+                run_id,
+                beat.phase,
+                beat.files_seen,
+                beat.bytes_seen,
+                beat.files_total,
+                beat.bytes_total,
+                beat.current_path,
+                beat.error_count
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Close a run. `state` carries the outcome, `error` the reason when there
+    /// was one (`failed`), and the counters are written one last time.
+    pub fn finish_scan_run(
+        &self,
+        run_id: i64,
+        state: &str,
+        beat: &RunBeat,
+        error: Option<&str>,
+    ) -> Result<()> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        c.execute(
+            "UPDATE scan_runs SET state=?2, phase=?3, files_seen=?4, bytes_seen=?5, files_total=?6, \
+             bytes_total=?7, current_path=?8, error_count=?9, error=?10, \
+             heartbeat_at=strftime('%s','now') WHERE id=?1",
+            params![
+                run_id,
+                state,
+                beat.phase,
+                beat.files_seen,
+                beat.bytes_seen,
+                beat.files_total,
+                beat.bytes_total,
+                beat.current_path,
+                beat.error_count,
+                error
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Change a run's state without touching its counters (pause, resume).
+    pub fn set_scan_run_state(&self, run_id: i64, state: &str) -> Result<()> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        c.execute(
+            "UPDATE scan_runs SET state=?2, heartbeat_at=strftime('%s','now') WHERE id=?1",
+            params![run_id, state],
+        )?;
+        Ok(())
+    }
+
+    /// The most recent attempt, whatever its state: what the UI needs to show
+    /// "where the last scan stopped" the moment the app opens.
+    pub fn latest_scan_run(&self) -> Result<Option<ScanRun>> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let mut stmt = c.prepare(&format!(
+            "{SCAN_RUN_SELECT} ORDER BY r.started_at DESC, r.id DESC LIMIT 1"
+        ))?;
+        let mut rows = stmt.query_map([], scan_run_row)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    /// Mark runs whose heartbeat went quiet as interrupted.
+    ///
+    /// Called once at start-up, never while a scan could be live: a process
+    /// that is sleeping (or paused) keeps beating, so a stale heartbeat can
+    /// only mean the process is gone. Returns how many rows were swept.
+    pub fn sweep_stale_scan_runs(&self, stale_secs: i64) -> Result<usize> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let n = c.execute(
+            "UPDATE scan_runs SET state='interrupted', \
+             error=COALESCE(error, 'la aplicación se cerró durante el escaneo') \
+             WHERE state IN ('running', 'paused') \
+             AND heartbeat_at < strftime('%s','now') - ?1",
+            params![stale_secs],
+        )?;
+        Ok(n)
+    }
+
+    /// Files seen by the last finished scan of this volume, if any. Used as the
+    /// estimate the UI shows while walking: a real total is not knowable
+    /// without walking, and pretending otherwise would be a lie.
+    pub fn last_completed_file_count(&self, volume_id: i64) -> Result<Option<i64>> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let mut stmt = c.prepare(
+            "SELECT files_seen FROM scan_runs \
+             WHERE volume_id=?1 AND state='completed' ORDER BY started_at DESC, id DESC LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map(params![volume_id], |r| r.get(0))?;
+        Ok(rows.next().transpose()?)
+    }
+
+    /// Record what could not be read. Replaces the volume's previous list: the
+    /// errors belong to the last completed walk, not to history.
+    pub fn replace_scan_errors(&self, volume_id: i64, errors: &[(String, String)]) -> Result<()> {
+        let mut c = self.conn.lock().map_err(|_| lock_err())?;
+        let tx = c.transaction()?;
+        tx.execute(
+            "DELETE FROM scan_errors WHERE volume_id=?1",
+            params![volume_id],
+        )?;
+        {
+            let mut stmt =
+                tx.prepare("INSERT INTO scan_errors(volume_id, path, reason) VALUES(?1, ?2, ?3)")?;
+            for (path, reason) in errors {
+                stmt.execute(params![volume_id, path, reason])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// What the last walk could not read, newest list first.
+    pub fn scan_errors(&self, volume_id: i64) -> Result<Vec<(String, String)>> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let mut stmt =
+            c.prepare("SELECT path, reason FROM scan_errors WHERE volume_id=?1 ORDER BY path")?;
+        let rows = stmt
+            .query_map(params![volume_id], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
     }

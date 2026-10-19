@@ -15,6 +15,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::scan::scan_volume,
             commands::scan::cancel_scan,
+            commands::scan::pause_scan,
+            commands::scan::resume_scan,
+            commands::scan::scan_status,
+            commands::scan::recover_stale_scans,
             commands::search::search,
             commands::search::list_duplicates,
             commands::search::get_volume,

@@ -14,6 +14,12 @@ DROP TRIGGER IF EXISTS files_au;
 CREATE TRIGGER files_au AFTER UPDATE ON files BEGIN DELETE FROM files_fts WHERE rowid = old.id; INSERT INTO files_fts(rowid, name, ext) VALUES (new.id, new.name, new.ext); END;
 CREATE TABLE IF NOT EXISTS thumbs(file_id INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE, webp128 BLOB);
 CREATE TABLE IF NOT EXISTS scan_errors(id INTEGER PRIMARY KEY, volume_id INTEGER NOT NULL REFERENCES volumes(id) ON DELETE CASCADE, path TEXT NOT NULL, reason TEXT NOT NULL);
+-- One row per scan attempt. The app can be killed at any moment (or the
+-- machine suspended mid-scan), so the next start must be able to say where the
+-- last one stopped and offer to continue. `heartbeat_at` is what separates a
+-- live scan from a dead one: no running loop stays quiet for long.
+CREATE TABLE IF NOT EXISTS scan_runs(id INTEGER PRIMARY KEY, volume_id INTEGER NOT NULL REFERENCES volumes(id) ON DELETE CASCADE, root TEXT NOT NULL, state TEXT NOT NULL, phase TEXT NOT NULL, files_seen INTEGER NOT NULL DEFAULT 0, bytes_seen INTEGER NOT NULL DEFAULT 0, files_total INTEGER, bytes_total INTEGER, current_path TEXT, error_count INTEGER NOT NULL DEFAULT 0, error TEXT, started_at INTEGER NOT NULL, heartbeat_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_scan_runs_started ON scan_runs(started_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dirs_vol_pathhash ON dirs(volume_id, path_hash);
 -- Name uniqueness is per folder for files on disk, and per folder+archive for
 -- entries inside a container: the same `readme.txt` can live on disk and in
