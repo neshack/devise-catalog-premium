@@ -7,10 +7,11 @@ import ResultsList from "./components/ResultsList";
 import ScanDialog from "./components/ScanDialog";
 import SearchBar, { SearchHelpButton } from "./components/SearchBar";
 import StatusBar from "./components/StatusBar";
+import TreeView from "./components/TreeView";
 import Toasts from "./components/Toasts";
 import VolumeSidebar from "./components/VolumeSidebar";
 import { LogoMark } from "./components/Brand";
-import { IconDuplicates, IconTable } from "./components/icons";
+import { IconDuplicates, IconFolder, IconTable } from "./components/icons";
 import { useCatalog } from "./stores/catalog";
 import type { SortKey } from "./lib/types";
 
@@ -107,6 +108,14 @@ export default function App() {
               >
                 <IconDuplicates size={14} /> Duplicados
               </button>
+              <button
+                className={`segmented__btn${view === "tree" ? " is-active" : ""}`}
+                role="tab"
+                aria-selected={view === "tree"}
+                onClick={() => setView("tree")}
+              >
+                <IconFolder size={14} /> Árbol
+              </button>
             </div>
 
             {view === "results" && (
@@ -127,7 +136,7 @@ export default function App() {
             {view === "results" && <SortSelect />}
           </div>
 
-          {view === "results" ? (
+          {view === "results" && (
             <>
               <div className="results-head" aria-hidden="true">
                 <span>Nombre</span>
@@ -137,8 +146,18 @@ export default function App() {
               </div>
               <ResultsList />
             </>
-          ) : (
-            <DuplicatesPanel />
+          )}
+          {view === "duplicates" && <DuplicatesPanel />}
+          {view === "tree" && (
+            <>
+              <div className="results-head results-head--tree" aria-hidden="true">
+                <span />
+                <span>Carpeta · archivo</span>
+                <span className="results-head__right">Contenido</span>
+                <span className="results-head__right">Tamaño</span>
+              </div>
+              <TreeView />
+            </>
           )}
         </main>
 

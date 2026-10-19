@@ -19,6 +19,7 @@ pub fn run() {
             commands::scan::resume_scan,
             commands::scan::scan_status,
             commands::scan::recover_stale_scans,
+            commands::tree::tree_children,
             commands::search::search,
             commands::search::list_duplicates,
             commands::search::get_volume,

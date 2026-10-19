@@ -288,3 +288,54 @@ fn a_folder_holds_one_file_per_name_unless_it_lives_in_an_archive() {
         "one archive cannot hold the same entry twice"
     );
 }
+
+#[test]
+fn tree_walks_one_level_at_a_time_with_direct_counts() {
+    let c = Catalog::new();
+    let vol = c.volume("Fotos-2024", "SER-1");
+    let root = c.dir(vol, None, "/", "root");
+    let fotos = c.dir(vol, Some(root), "Fotos", "d-fotos");
+    let deep = c.dir(vol, Some(fotos), "2023", "d-2023");
+    c.file(vol, root, "leeme.txt", 10, None);
+    c.file(vol, fotos, "IMG_0001.jpg", 100, None);
+    c.file(vol, fotos, "IMG_0002.jpg", 200, None);
+    c.file(vol, deep, "viejo.jpg", 400, None);
+    c.entry(vol, fotos, "dentro.zip/notas.txt", 50, "dentro.zip");
+
+    // The root knows about its folder and its file, not about what is deeper.
+    let root_children = c.db.tree_children("Fotos-2024", None).unwrap();
+    assert_eq!(root_children.dirs_total, 1);
+    assert_eq!(root_children.files_total, 1);
+    assert_eq!(root_children.dirs.len(), 1);
+    let folder = &root_children.dirs[0];
+    assert_eq!(folder.name, "Fotos");
+    assert_eq!(folder.files, 3, "two files on disk plus one inside the zip");
+    assert_eq!(folder.size, 350, "direct bytes only, not the nested folder");
+    assert_eq!(folder.dirs, 1);
+    assert_eq!(root_children.files[0].name, "leeme.txt");
+
+    // Inside the folder: its files first-class, the subfolder counted but not
+    // descended into.
+    let fotos_children = c.db.tree_children("Fotos-2024", Some(fotos)).unwrap();
+    assert_eq!(fotos_children.files_total, 3);
+    let names: Vec<&str> = fotos_children
+        .files
+        .iter()
+        .map(|f| f.name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["dentro.zip/notas.txt", "IMG_0001.jpg", "IMG_0002.jpg"]
+    );
+    let entry = &fotos_children.files[0];
+    assert_eq!(entry.container_path.as_deref(), Some("dentro.zip"));
+    assert_eq!(
+        fotos_children.dirs[0].files, 1,
+        "the 2023 folder has one file"
+    );
+    assert_eq!(fotos_children.dirs[0].size, 400);
+
+    // An unknown volume is an error, not an empty tree: saying "nothing here"
+    // about a disk that was never indexed would be a lie.
+    assert!(c.db.tree_children("No-Existe", None).is_err());
+}

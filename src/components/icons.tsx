@@ -43,6 +43,10 @@ export const IconFolder = (p: IconProps) =>
 export const IconFile = (p: IconProps) =>
   base(p.size, <><path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7Z" /><path d="M14 3v4h4" /></>, p.className);
 
+/** Points at the folder it opens; the tree rotates it, it never mirrors. */
+export const IconChevron = (p: IconProps) =>
+  base(p.size, <path d="m9 5 7 7-7 7" />, p.className);
+
 export const IconMusic = (p: IconProps) =>
   base(p.size, <><circle cx="7" cy="18" r="2.5" /><circle cx="17" cy="16" r="2.5" /><path d="M9.5 18V7l10-2v11" /></>, p.className);
 

@@ -10,6 +10,8 @@ import type {
   ScanOutcome,
   ScanProgress,
   ScanRun,
+  TreeDir,
+  TreeFile,
   VolumeSummary,
 } from "./types";
 
@@ -255,8 +257,74 @@ interface MockArgs {
   root?: string;
   label?: string;
   serial?: string;
+  volume?: string;
+  parent?: number | null;
   out_path?: string | null;
 }
+
+interface MockLevel {
+  dirs: TreeDir[];
+  files: TreeFile[];
+}
+
+/**
+ * One volume's levels, built from the demo files the same way the scanner's
+ * dirs table holds them: direct children per folder, direct counts per folder.
+ */
+function buildTreeLevels(volumeLabel: string) {
+  const mine = files.filter((f) => f.volume === volumeLabel);
+  const dirPaths = new Set<string>();
+  for (const f of mine) {
+    let p = f.path === "/" ? "" : f.path;
+    while (p !== "") {
+      dirPaths.add(p);
+      const cut = p.lastIndexOf("/");
+      p = cut <= 0 ? "" : p.slice(0, cut);
+    }
+  }
+  const byPath = new Map<string, MockLevel>();
+  const pathOfId = new Map<number, string>();
+  const levelAt = (p: string): MockLevel => {
+    const found = byPath.get(p);
+    if (found !== undefined) return found;
+    const fresh: MockLevel = { dirs: [], files: [] };
+    byPath.set(p, fresh);
+    return fresh;
+  };
+  levelAt("");
+  let nextId = 1;
+  for (const p of [...dirPaths].sort()) {
+    const cut = p.lastIndexOf("/");
+    const parent = cut <= 0 ? "" : p.slice(0, cut);
+    const id = nextId++;
+    pathOfId.set(id, p);
+    levelAt(parent).dirs.push({ id, name: p.slice(cut + 1), files: 0, dirs: 0, size: 0 });
+  }
+  for (const f of mine) {
+    levelAt(f.path === "/" ? "" : f.path).files.push({
+      id: f.id,
+      name: f.name,
+      ext: f.ext,
+      size: f.size,
+      mtime: f.mtime,
+      container_path: f.container_path,
+    });
+  }
+  for (const [p, level] of byPath) {
+    for (const dir of level.dirs) {
+      const own = byPath.get(pathOfId.get(dir.id) ?? p);
+      if (own === undefined) continue;
+      dir.files = own.files.length;
+      dir.dirs = own.dirs.length;
+      dir.size = own.files.reduce((sum, f) => sum + f.size, 0);
+    }
+    level.dirs.sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
+    level.files.sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
+  }
+  return { byPath, pathOfId };
+}
+
+const treeLevels = new Map<string, ReturnType<typeof buildTreeLevels>>();
 
 /** Mock implementation of every Tauri command the UI calls. */
 export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
@@ -480,6 +548,22 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
       return delay({
         live: scanTimer !== null ? (scanPaused ? "paused" : "running") : "idle",
         run: lastRun,
+      } as T);
+    }
+    case "tree_children": {
+      const volume = String(args.volume ?? "");
+      let built = treeLevels.get(volume);
+      if (built === undefined) {
+        built = buildTreeLevels(volume);
+        treeLevels.set(volume, built);
+      }
+      const path = args.parent === null || args.parent === undefined ? "" : (built.pathOfId.get(args.parent) ?? "");
+      const level = built.byPath.get(path) ?? { dirs: [], files: [] };
+      return delay({
+        dirs: level.dirs,
+        files: level.files,
+        files_total: level.files.length,
+        dirs_total: level.dirs.length,
       } as T);
     }
     case "recover_stale_scans": {

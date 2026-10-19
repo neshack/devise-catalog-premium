@@ -50,6 +50,16 @@ await page.getByTestId("result-row").first().click();
 await page.waitForTimeout(600);
 await shot("07-zip-entry");
 
+// the tree: one volume, read folder by folder
+await page.getByRole("button", { name: /Fotos-2024/ }).click();
+await page.getByRole("tab", { name: /árbol/i }).click();
+await page.waitForTimeout(700);
+await page.getByTestId("tree-row").first().click();
+await page.waitForTimeout(500);
+await page.getByTestId("tree-row").nth(1).click();
+await page.waitForTimeout(600);
+await shot("08-tree");
+
 // scan in progress: the strip stays visible even with the dialog closed
 await page.getByRole("button", { name: /escanear volumen/i }).click();
 await page.waitForTimeout(300);
@@ -59,18 +69,18 @@ await page.getByRole("button", { name: /^escanear$/i }).click();
 await page.waitForTimeout(500);
 await page.keyboard.press("Escape");
 await page.waitForTimeout(200);
-await shot("08-scan-strip");
+await shot("09-scan-strip");
 
 // paused: the walk stops but keeps saying so
 await page.getByRole("button", { name: /^pausar$/i }).click();
 await page.waitForTimeout(500);
-await shot("09-scan-paused");
+await shot("10-scan-paused");
 
 // the page dies mid-scan (like a killed app): the next start must say where
 // the walk stopped and offer to continue
 await page.reload();
 await page.waitForTimeout(1200);
-await shot("10-scan-interrupted");
+await shot("11-scan-interrupted");
 
 await browser.close();
 console.log("capturas listas");

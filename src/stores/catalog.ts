@@ -12,11 +12,13 @@ import type {
   ScanStatus,
   SortDir,
   SortKey,
+  TreeChildren,
   VolumeSummary,
 } from "../lib/types";
 import { SCAN_DONE_STATES } from "../lib/types";
+import { TREE_ROOT } from "../lib/tree";
 
-export type View = "results" | "duplicates";
+export type View = "results" | "duplicates" | "tree";
 export type ToastKind = "success" | "error" | "info";
 
 export interface Toast {
@@ -24,6 +26,19 @@ export interface Toast {
   kind: ToastKind;
   text: string;
 }
+
+/** The explorer: what has been read, and which folders are open. */
+interface TreeState {
+  /** Folder being fetched right now, by cache key. */
+  loading: string | null;
+  /** Children by parent key ({@link TREE_ROOT} or a folder id as a string). */
+  children: Record<string, TreeChildren>;
+  /** Open folders, by cache key. */
+  expanded: string[];
+  error: string | null;
+}
+
+const EMPTY_TREE: TreeState = { loading: null, children: {}, expanded: [], error: null };
 
 interface ScanState {
   /** True while this process is walking or indexing. */
@@ -88,6 +103,8 @@ interface CatalogState {
   dupLoading: boolean;
   dupError: string | null;
 
+  tree: TreeState;
+
   scan: ScanState;
   scanOpen: boolean;
 
@@ -100,6 +117,15 @@ interface CatalogState {
   select: (h: Hit | null) => void;
   setView: (v: View) => void;
   setVolumeFilter: (label: string | null) => void;
+  /** Read (or re-read) the top level of the volume the tree is showing. */
+  loadTree: () => Promise<void>;
+  /** Open a folder, reading it the first time; close it when already open. */
+  toggleTreeDir: (key: string, dirId: number) => Promise<void>;
+  /**
+   * Show a tree's file in the results list, selected — the inspector reads
+   * from a search hit, and this is how the tree hands it over.
+   */
+  revealInResults: (name: string) => Promise<void>;
   setSort: (key: SortKey, dir?: SortDir) => void;
   loadDuplicates: () => Promise<void>;
   setScanOpen: (open: boolean) => void;
@@ -142,6 +168,8 @@ export const useCatalog = create<CatalogState>((set, get) => ({
   dupGroups: [],
   dupLoading: false,
   dupError: null,
+
+  tree: EMPTY_TREE,
 
   scan: IDLE_SCAN,
   scanOpen: false,
@@ -231,7 +259,62 @@ export const useCatalog = create<CatalogState>((set, get) => ({
     if (view === "duplicates" && get().dupGroups.length === 0 && !get().dupLoading) void get().loadDuplicates();
   },
 
-  setVolumeFilter: (volumeFilter) => set({ volumeFilter }),
+  setVolumeFilter: (volumeFilter) => {
+    // Levels read from another volume would be wrong here: a folder id only
+    // means something inside its own tree.
+    if (volumeFilter !== get().volumeFilter) set({ volumeFilter, tree: EMPTY_TREE });
+  },
+
+  loadTree: async () => {
+    const volume = get().volumeFilter;
+    if (volume === null) {
+      set({ tree: EMPTY_TREE });
+      return;
+    }
+    set({ tree: { ...EMPTY_TREE, loading: TREE_ROOT } });
+    try {
+      const children = await call<TreeChildren>("tree_children", {
+        dbPath: get().dbPath,
+        volume,
+        parent: null,
+      });
+      set({ tree: { loading: null, children: { [TREE_ROOT]: children }, expanded: [], error: null } });
+    } catch (e) {
+      set({ tree: { ...EMPTY_TREE, error: String(e) } });
+    }
+  },
+
+  toggleTreeDir: async (key, dirId) => {
+    const { tree, volumeFilter } = get();
+    const { expanded } = tree;
+    if (expanded.includes(key)) {
+      set({ tree: { ...tree, expanded: expanded.filter((k: string) => k !== key) } });
+      return;
+    }
+    if (tree.children[key] !== undefined) {
+      set({ tree: { ...tree, expanded: [...expanded, key] } });
+      return;
+    }
+    if (volumeFilter === null) return;
+    set({ tree: { ...tree, loading: key, error: null } });
+    try {
+      const children = await call<TreeChildren>("tree_children", {
+        dbPath: get().dbPath,
+        volume: volumeFilter,
+        parent: dirId,
+      });
+      set((s) => ({
+        tree: {
+          ...s.tree,
+          loading: null,
+          children: { ...s.tree.children, [key]: children },
+          expanded: [...s.tree.expanded, key],
+        },
+      }));
+    } catch (e) {
+      set((s) => ({ tree: { ...s.tree, loading: null, error: String(e) } }));
+    }
+  },
 
   setSort: (key, dir) =>
     set((s) => ({ sortKey: key, sortDir: dir ?? (s.sortKey === key && s.sortDir === "asc" ? "desc" : "asc") })),
@@ -324,6 +407,16 @@ export const useCatalog = create<CatalogState>((set, get) => ({
     } catch (e) {
       get().pushToast("error", `No se pudo cancelar: ${String(e)}`);
     }
+  },
+
+  revealInResults: async (name) => {
+    set({ query: name, view: "results" });
+    await get().runSearch();
+    const hits = get().hits;
+    // The tree knows the name, the inspector needs the row: the search is what
+    // turns one into the other, and it keeps the volume filter in force.
+    const exact = hits.find((h) => h.name === name) ?? hits[0];
+    if (exact !== undefined) get().select(exact);
   },
 
   runExport: async (fmt) => {

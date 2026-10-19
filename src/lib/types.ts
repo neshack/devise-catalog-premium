@@ -119,3 +119,29 @@ export type ExportFormat = "csv" | "json" | "html";
 
 export type SortKey = "name" | "size" | "mtime" | "volume";
 export type SortDir = "asc" | "desc";
+
+/** A folder as the tree shows it, with direct (not recursive) counts. */
+export interface TreeDir {
+  id: number;
+  name: string;
+  files: number;
+  dirs: number;
+  size: number;
+}
+
+export interface TreeFile {
+  id: number;
+  name: string;
+  ext: string;
+  size: number;
+  mtime: number;
+  container_path: string | null;
+}
+
+/** One level of the tree: folders and files inside a folder. */
+export interface TreeChildren {
+  dirs: TreeDir[];
+  files: TreeFile[];
+  files_total: number;
+  dirs_total: number;
+}

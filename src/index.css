@@ -1852,6 +1852,92 @@ p {
   background: var(--led-amber);
 }
 
+/* ---------- árbol ---------- */
+
+/* La cabecera del árbol sigue sus cuatro columnas (marca, nombre, contenido,
+   tamaño), que no son las de resultados. */
+.results-head--tree {
+  grid-template-columns: 16px minmax(0, 1fr) 150px 88px;
+}
+
+.tree-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 150px 88px;
+  align-items: center;
+  gap: var(--space-3);
+  height: 30px;
+  padding-right: 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+  transition: background var(--dur) var(--ease);
+}
+
+.tree-row:hover {
+  background: var(--surface-hover);
+}
+
+.tree-row.is-selected {
+  background: var(--surface-3);
+}
+
+.tree-row__mark {
+  display: grid;
+  place-items: center;
+  color: var(--fg-faint);
+}
+
+.tree-row__mark svg {
+  transition: transform var(--dur) var(--ease);
+}
+
+.tree-row__mark svg.is-open {
+  transform: rotate(90deg);
+}
+
+.tree-row__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--fg-muted);
+}
+
+.tree-row--dir .tree-row__name {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.tree-row__name svg {
+  flex-shrink: 0;
+}
+
+.tree-row__text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tree-row__tag {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--fg-faint);
+}
+
+.tree-row__count,
+.tree-row__size {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-faint);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- varios ---------- */
 
 .spinner {

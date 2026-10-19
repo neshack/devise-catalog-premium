@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::path::Path;
 use std::sync::Mutex;
 pub struct Db {
@@ -194,6 +194,44 @@ fn scan_run_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<ScanRun> {
         heartbeat_at: r.get(15)?,
     })
 }
+
+/// A folder as the tree shows it: what it is, and what it holds one level down.
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct TreeDir {
+    pub id: i64,
+    pub name: String,
+    /// Files directly inside it (not recursive).
+    pub files: i64,
+    /// Folders directly inside it.
+    pub dirs: i64,
+    /// Bytes of the files directly inside it.
+    pub size: i64,
+}
+
+/// A file as the tree shows it.
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct TreeFile {
+    pub id: i64,
+    pub name: String,
+    pub ext: String,
+    pub size: i64,
+    pub mtime: i64,
+    pub container_path: Option<String>,
+}
+
+/// One level of the tree: the folders and files inside a folder.
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct TreeChildren {
+    pub dirs: Vec<TreeDir>,
+    pub files: Vec<TreeFile>,
+    /// How many there are in total, before the cap: the UI can say so.
+    pub files_total: i64,
+    pub dirs_total: i64,
+}
+
+/// Folders and files are capped per level: a folder with a million entries
+/// would freeze the window long before it informed anyone.
+pub const TREE_PAGE: i64 = 5000;
 
 fn lock_err() -> anyhow::Error {
     anyhow::anyhow!("db lock poisoned")
@@ -642,5 +680,101 @@ impl Db {
             .query_map(params![volume_id], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    /// One level of the catalog's tree: the folders and files inside a folder
+    /// of a volume. `parent` is a dir id; `None` means the volume's root.
+    ///
+    /// Folder sizes and counts are direct, not recursive: what the tree says
+    /// about a folder has to match what expanding it will actually show.
+    pub fn tree_children(&self, volume: &str, parent: Option<i64>) -> Result<TreeChildren> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let volume_id: i64 = c
+            .query_row(
+                "SELECT id FROM volumes WHERE label=?1",
+                params![volume],
+                |r| r.get(0),
+            )
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    anyhow::anyhow!("volumen desconocido: {volume}")
+                }
+                other => other.into(),
+            })?;
+
+        // The volume's top level is its root folder, which the scanner writes
+        // as the one dir with no parent. Asking for `None` means "start there",
+        // not "the dirs that have no parent".
+        let parent: Option<i64> = match parent {
+            Some(id) => Some(id),
+            None => c
+                .query_row(
+                    "SELECT id FROM dirs WHERE volume_id=?1 AND parent_id IS NULL ORDER BY id LIMIT 1",
+                    params![volume_id],
+                    |r| r.get(0),
+                )
+                .optional()?,
+        };
+        let Some(parent) = parent else {
+            // A volume with no folders at all: nothing to show, nothing wrong.
+            return Ok(TreeChildren {
+                dirs: Vec::new(),
+                files: Vec::new(),
+                files_total: 0,
+                dirs_total: 0,
+            });
+        };
+
+        let (dirs_total, files_total): (i64, i64) = c.query_row(
+            "SELECT (SELECT COUNT(*) FROM dirs WHERE volume_id=?1 AND parent_id=?2), \
+                    (SELECT COUNT(*) FROM files WHERE volume_id=?1 AND dir_id=?2)",
+            params![volume_id, parent],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+
+        let mut stmt = c.prepare(
+            "SELECT d.id, d.name, \
+                (SELECT COUNT(*) FROM files f WHERE f.dir_id = d.id), \
+                COALESCE((SELECT SUM(f.size) FROM files f WHERE f.dir_id = d.id), 0), \
+                (SELECT COUNT(*) FROM dirs child WHERE child.parent_id = d.id) \
+             FROM dirs d WHERE d.volume_id=?1 AND d.parent_id=?2 \
+             ORDER BY d.name COLLATE NOCASE LIMIT ?3",
+        )?;
+        let dirs = stmt
+            .query_map(params![volume_id, parent, TREE_PAGE], |r| {
+                Ok(TreeDir {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    files: r.get(2)?,
+                    size: r.get(3)?,
+                    dirs: r.get(4)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let mut stmt = c.prepare(
+            "SELECT f.id, f.name, COALESCE(f.ext, ''), f.size, COALESCE(f.mtime, 0), f.container_path \
+             FROM files f WHERE f.volume_id=?1 AND f.dir_id=?2 \
+             ORDER BY f.name COLLATE NOCASE LIMIT ?3",
+        )?;
+        let files = stmt
+            .query_map(params![volume_id, parent, TREE_PAGE], |r| {
+                Ok(TreeFile {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    ext: r.get(2)?,
+                    size: r.get(3)?,
+                    mtime: r.get(4)?,
+                    container_path: r.get(5)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(TreeChildren {
+            dirs,
+            files,
+            files_total,
+            dirs_total,
+        })
     }
 }
