@@ -2,12 +2,17 @@
 
 const BYTE_UNITS = ["B", "KB", "MB", "GB", "TB", "PB"] as const;
 
+// Sizes are read by people: a Spanish catalog writes 36,3 MB, not 36.3 MB.
+// Both formatters skip decimals where they would only add noise.
+const SIZE_ONE_DECIMAL = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 1 });
+const SIZE_WHOLE = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0 });
+
 export function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "—";
   if (n === 0) return "0 B";
   const i = Math.min(Math.floor(Math.log2(n) / 10), BYTE_UNITS.length - 1);
   const v = n / 1024 ** i;
-  const s = i === 0 ? String(v) : v >= 100 ? v.toFixed(0) : v.toFixed(1);
+  const s = i === 0 ? String(v) : (v >= 100 ? SIZE_WHOLE : SIZE_ONE_DECIMAL).format(v);
   return `${s} ${BYTE_UNITS[i]}`;
 }
 
