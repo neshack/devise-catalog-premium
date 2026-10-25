@@ -41,7 +41,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 
 /** File tags, loaded per selection and mirrored into an open tree row. */
 function FileTags({ fileId }: { fileId: number }) {
-  const { dbPath, pushToast, updateTreeTags } = useCatalog();
+  const { dbPath, pushToast, updateTreeTags, tagsRevision } = useCatalog();
   const [tags, setTags] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -67,7 +67,7 @@ function FileTags({ fileId }: { fileId: number }) {
     return () => {
       alive = false;
     };
-  }, [dbPath, fileId, pushToast]);
+  }, [dbPath, fileId, pushToast, tagsRevision]);
 
   const apply = async (command: string, name: string) => {
     setBusy(true);

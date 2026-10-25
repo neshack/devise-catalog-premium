@@ -105,6 +105,8 @@ interface CatalogState {
   dupError: string | null;
 
   tree: TreeState;
+  /** Bumped whenever a tag changes, so an open inspector reloads its chips. */
+  tagsRevision: number;
 
   scan: ScanState;
   scanOpen: boolean;
@@ -178,6 +180,7 @@ export const useCatalog = create<CatalogState>((set, get) => ({
   dupError: null,
 
   tree: EMPTY_TREE,
+  tagsRevision: 0,
 
   scan: IDLE_SCAN,
   scanOpen: false,
@@ -542,7 +545,10 @@ export const useCatalog = create<CatalogState>((set, get) => ({
           }
         }
       }
-      return { tree: { ...s.tree, children } };
+      return {
+        tree: { ...s.tree, children },
+        tagsRevision: s.tagsRevision + 1,
+      };
     }),
 
   runExport: async (fmt) => {
