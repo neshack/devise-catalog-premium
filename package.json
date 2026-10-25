@@ -1,8 +1,29 @@
 {
-  "name": "cd-catalog-premium",
+  "name": "devise-catalog-premium",
   "private": true,
   "version": "0.3.0",
+  "description": "Offline-first desktop catalog for discs, USB drives, NAS and archives.",
+  "author": "Nestor Peña (neshack)",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/neshack/devise-catalog-premium.git"
+  },
+  "homepage": "https://github.com/neshack/devise-catalog-premium#readme",
+  "bugs": {
+    "url": "https://github.com/neshack/devise-catalog-premium/issues"
+  },
+  "keywords": [
+    "tauri",
+    "rust",
+    "react",
+    "sqlite",
+    "offline-first",
+    "catalog",
+    "file-indexer",
+    "disc-catalog"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

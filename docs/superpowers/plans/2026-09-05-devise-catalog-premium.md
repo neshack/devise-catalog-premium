@@ -1,14 +1,14 @@
-# CD Catalog Premium Implementation Plan
+# Devise Catalog Premium Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Construir el MVP offline de CD Catalog Premium que indexa 1–2M archivos en un `.cdc` portable con búsqueda <100ms.
+**Goal:** Construir el MVP offline de Devise Catalog Premium que indexa 1–2M archivos en un `.cdc` portable con búsqueda <100ms.
 
 **Architecture:** Tauri v2 con workspace Rust (scanner paralelo → SQLite WAL + FTS5 en batches) y frontend React virtualizado; IPC tipado por commands; exports estáticos sin red.
 
 **Tech Stack:** Tauri v2, Rust 1.77+ (rusqlite 0.31 bundled+fts5, jwalk 0.8, rayon 1.8, blake3 1.5, lofty 0.20, rexif 0.7, zip 2.1), TypeScript 5 strict, Vite 5+, React 18+, TanStack Virtual 3, Zustand 4, Tailwind 3, Vitest + Playwright, GitHub Actions (Win/Linux/macOS). Frontend majors are minimum floors — exact versions pinned by `package-lock.json` (amended 2026-09-05, see SDD ledger).
 
-**Spec:** `docs/superpowers/specs/2026-09-05-cd-catalog-premium-design.md`
+**Spec:** `docs/superpowers/specs/2026-09-05-devise-catalog-premium-design.md`
 
 ## Global Constraints
 
@@ -87,15 +87,15 @@ tests/e2e/search.spec.ts      # Playwright
 #[cfg(test)]
 mod tests {
     #[test]
-    fn app_name_is_cd_catalog_premium() {
-        assert_eq!(crate::APP_NAME, "CD Catalog Premium");
+    fn app_name_is_devise_catalog_premium() {
+        assert_eq!(crate::APP_NAME, "Devise Catalog Premium");
     }
 }
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p cd-catalog-premium --lib app_name_is_cd_catalog_premium -v`
+Run: `cargo test -p devise-catalog-premium --lib app_name_is_devise_catalog_premium -v`
 Expected: FAIL with "cannot find value APP_NAME" / "no function or associated item"
 
 - [ ] **Step 3: Write minimal scaffold**
@@ -103,12 +103,12 @@ Expected: FAIL with "cannot find value APP_NAME" / "no function or associated it
 ```toml
 # src-tauri/Cargo.toml
 [package]
-name = "cd-catalog-premium"
+name = "devise-catalog-premium"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "cd_catalog_premium_lib"
+name = "devise_catalog_premium_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -122,7 +122,7 @@ serde_json = "1"
 
 ```rust
 // src-tauri/src/lib.rs
-pub const APP_NAME: &str = "CD Catalog Premium";
+pub const APP_NAME: &str = "Devise Catalog Premium";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -136,7 +136,7 @@ pub fn run() {
 // src-tauri/src/main.rs
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 fn main() {
-    cd_catalog_premium_lib::run();
+    devise_catalog_premium_lib::run();
 }
 ```
 
@@ -144,11 +144,11 @@ fn main() {
 // src-tauri/tauri.conf.json
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "CD Catalog Premium",
+  "productName": "Devise Catalog Premium",
   "version": "0.1.0",
   "identifier": "com.cd_catalog.premium",
   "build": { "frontendDist": "../dist", "devUrl": "http://localhost:1420" },
-  "app": { "windows": [{ "title": "CD Catalog Premium", "width": 1280, "height": 800 }] },
+  "app": { "windows": [{ "title": "Devise Catalog Premium", "width": 1280, "height": 800 }] },
   "bundle": { "active": true, "targets": "all", "icon": ["icons/32x32.png"] }
 }
 ```
@@ -158,7 +158,7 @@ fn main() {
 export default function App() {
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
-      <h1 className="text-2xl font-bold">CD Catalog Premium</h1>
+      <h1 className="text-2xl font-bold">Devise Catalog Premium</h1>
       <p className="text-zinc-400">Scaffold OK — offline catalog</p>
     </main>
   );
@@ -196,7 +196,7 @@ jobs:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `cargo test -v`
-Expected: PASS `app_name_is_cd_catalog_premium`; y `npm run build` compila sin errores TS
+Expected: PASS `app_name_is_devise_catalog_premium`; y `npm run build` compila sin errores TS
 
 - [ ] **Step 5: Commit**
 
@@ -949,7 +949,7 @@ import { test, expect } from "@playwright/test";
 test("buscar *.mp3 muestra resultados", async ({ page }) => {
   await page.goto("http://localhost:1420");
   await page.getByPlaceholder(/mp3/i).fill("*.mp3");
-  await expect(page.getByText("CD Catalog Premium")).toBeVisible();
+  await expect(page.getByText("Devise Catalog Premium")).toBeVisible();
 });
 ```
 

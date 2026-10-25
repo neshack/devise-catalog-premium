@@ -261,7 +261,7 @@ REPO_NAME=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || e
 SECRETS_ON_REPO=$(_secrets_on_repo)
 already_set() { [[ " $SECRETS_ON_REPO " == *" $1 "* ]]; }
 
-banner "Release signing — CD Catalog Premium"
+banner "Release signing — Devise Catalog Premium"
 
 # ── Stage 1: preflight ────────────────────────────────────────────────────
 stage "Preflight: GitHub CLI and the repository"
@@ -351,7 +351,7 @@ if [[ -n "$_apple_ready" ]]; then
   say "A signed app that was never notarized is still refused by Gatekeeper, so"
   say "without these three values the release job fails its own verification."
   open_url "https://account.apple.com/account/manage"
-  step "Sign-In & Security → App-Specific Passwords → + → call it 'cd-catalog-ci'"
+  step "Sign-In & Security → App-Specific Passwords → + → call it 'devise-catalog-ci'"
   ask APPLE_ID "Apple ID email:"
   ask_secret APPLE_PASSWORD "App-specific password (xxxx-xxxx-xxxx-xxxx):"
   ask_default APPLE_TEAM_ID "Team ID (10 characters)" "${DETECTED_TEAM:-ABCDE1234}"

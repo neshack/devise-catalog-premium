@@ -6,5 +6,5 @@ Icon={{icon}}
 Name={{name}}
 Terminal=false
 Type=Application
-StartupWMClass=cd-catalog-premium
+StartupWMClass=devise-catalog-premium
 Keywords=catálogo;discos;archivos;búsqueda;inventario;

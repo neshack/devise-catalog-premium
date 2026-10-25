@@ -2,10 +2,29 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0d0f0e" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <title>CD Catalog Premium</title>
+    <title>Devise Catalog Premium</title>
+    <script>
+      // Apply the saved theme before the first paint. Without this, a light
+      // window would flash dark for one frame while React starts.
+      (() => {
+        try {
+          const saved = localStorage.getItem("devise-theme");
+          const mode = saved === "light" || saved === "dark" ? saved : "system";
+          const dark =
+            mode === "dark" ||
+            (mode === "system" &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.dataset.theme = dark ? "dark" : "light";
+          document.documentElement.dataset.themeMode = mode;
+        } catch {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

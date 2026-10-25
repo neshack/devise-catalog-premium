@@ -185,7 +185,7 @@ let scanProgress: ScanProgress | null = null;
 let scanFinish: ((outcome: ScanOutcome) => void) | null = null;
 // The demo's catalog lives in localStorage, so reloading the page mid-scan
 // leaves the same evidence a killed app leaves behind.
-const DEMO_RUN_KEY = "cd-catalog-demo-run";
+const DEMO_RUN_KEY = "devise-catalog-demo-run";
 
 function loadDemoRun(): ScanRun | null {
   try {

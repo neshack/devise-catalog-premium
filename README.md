@@ -1,219 +1,220 @@
-# CD Catalog Premium
+# Devise Catalog Premium
 
-Sucesor offline y cross-platform de **CD Catalog Expert**: escanea volúmenes completos
-(discos, USB, NAS, ISOs) y permite buscar en el catálogo **sin tener el disco insertado**.
+[![ci](https://github.com/neshack/devise-catalog-premium/actions/workflows/ci.yml/badge.svg)](https://github.com/neshack/devise-catalog-premium/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-ffac1c.svg)](LICENSE)
+[![release](https://img.shields.io/github/v/release/neshack/devise-catalog-premium?color=ffac1c)](https://github.com/neshack/devise-catalog-premium/releases)
 
-Todo el catálogo vive en un único archivo portable `.cdc` (SQLite WAL + FTS5).
-100 % local: sin cuentas, sin telemetría, sin red.
+An offline-first desktop catalog for the media you keep in a drawer: burned
+discs, USB drives, external disks, NAS folders and ZIP archives. Scan a volume
+once, then ask **where a file lives** months later without inserting the media.
 
-## Stack
+The catalog is a single portable `.cdc` file (SQLite WAL + FTS5). No account,
+no telemetry, no network calls at runtime.
 
-- **App:** Tauri v2 + Rust (backend) + TypeScript + React + Vite (sin Tailwind:
-  design system propio en `src/index.css` con variables CSS)
-- **Datos:** SQLite WAL + FTS5 (`rusqlite`), un solo archivo `.cdc`
-- **Escaneo:** `jwalk` + hash BLAKE3 + parsers (`lofty` audio, `rexif` EXIF, `zip`)
-- **UI:** Zustand + TanStack Virtual (listas de millones de filas a 60 fps)
+> Formerly **CD Catalog Premium**. The app data directory and package name
+> changed in 0.3.0; the first launch copies the old catalog automatically.
 
-## Prerequisitos
+![Devise Catalog Premium, tree view](docs/images/tree.png)
 
-| Requisito | Versión | Notas |
+## Why another file indexer?
+
+Because the answer to "where is that file?" should not depend on the disk being
+plugged in, on a cloud account, or on a service that may disappear. Devise
+Catalog is a local inventory: one file you can copy, back up, carry on a USB
+stick, and search at any time.
+
+## Features
+
+- **Volume scan** with differential re-scans: unchanged files are never read
+  again; removed files are pruned.
+- **Full-text search** with filters for extension, size and volume
+  (`*.mp3`, `ext:{flac,wav}`, `size:>500MB`, `volume:"Backup-12"`).
+- **Tree view** as the primary browser: one volume at a time, one level per
+  query, so opening a million-file volume costs one level, not a million rows.
+- **Archive entries** from ZIP central directories, indexed without extracting.
+- **Duplicates** by BLAKE3 content hash across volumes.
+- **Inspector** with path, size, date, hash, audio metadata (ID3 via `lofty`)
+  and image metadata (EXIF via `rexif`).
+- **Resilient scans**: pause, resume, cancel, and continue after the process
+  was killed or the machine suspended.
+- **Safe volume removal**: typing the label is required; the disk is never
+  touched.
+- **Exports** to CSV, JSON and HTML.
+- **100 % local** and keyboard-first.
+- **Light, dark or system theme**, applied before the first paint and remembered
+  across launches.
+
+<p align="center">
+  <img src="docs/images/splash.png" alt="Splash screen" width="49%" />
+  <img src="docs/images/scan.png" alt="Scan strip with measured progress" width="49%" />
+</p>
+<p align="center">
+  <img src="docs/images/search.png" alt="Search results" width="49%" />
+  <img src="docs/images/delete-volume.png" alt="Safe volume removal" width="49%" />
+</p>
+
+### Themes
+
+The interface follows the operating system by default and can be pinned to
+light or dark from the header. The choice survives restarts; the system option
+keeps listening to the OS while the app is open.
+
+<p align="center">
+  <img src="docs/images/theme.png" alt="Theme menu" width="49%" />
+  <img src="docs/images/light.png" alt="Light theme with a tree selection" width="49%" />
+</p>
+
+## Install
+
+Download the latest installer from
+[Releases](https://github.com/neshack/devise-catalog-premium/releases).
+
+| Platform | Artifact |
+|---|---|
+| Linux (Fedora/RHEL) | `.rpm` |
+| Linux (Debian/Ubuntu) | `.deb` |
+| Linux (portable) | `.AppImage` |
+| Windows | `.msi` / `.exe` |
+| macOS | `.dmg` / `.app` |
+
+Linux packages are unsigned by design: `.deb` and `.AppImage` have no OS-level
+signature check. Windows and macOS builds are signed only when the release
+secrets are configured (see [`.github/workflows/release.yml`](.github/workflows/release.yml)).
+
+### Upgrading from CD Catalog Premium
+
+The 0.3.0 rename changes the bundle identifier from `com.cdcatalog.premium` to
+`com.devise.catalog`. On first launch, Devise Catalog copies the old
+`catalog.cdc` (and its SQLite WAL files) into the new data directory. The old
+application can then be uninstalled; the new one keeps working with the copied
+catalog.
+
+## Build from source
+
+Requirements:
+
+| Requirement | Version | Notes |
 |---|---|---|
-| Rust estable | ≥ 1.77 | `rustup` recomendado |
-| Node.js | ≥ 20 | incluye `npm` |
-| **Linux** | webkit2gtk 4.1 + dependencias | `sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libayatana-appindicator3-dev librsvg2-dev` (Debian/Ubuntu) |
-| **Windows** | WebView2 | viene preinstalado en Windows 10/11 |
-| **macOS** | Xcode Command Line Tools | `xcode-select --install` |
-
-## Instalación
+| Rust stable | ≥ 1.87 | `rustup` recommended |
+| Node.js | ≥ 20 | includes `npm` |
+| Linux | WebKitGTK 4.1 + build tools | `sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libayatana-appindicator3-dev librsvg2-dev` |
+| Windows | WebView2 | preinstalled on Windows 10/11 |
+| macOS | Xcode Command Line Tools | `xcode-select --install` |
 
 ```bash
-git clone <repo> && cd cd_catalog_premium
-git checkout feat/cd-catalog-mvp   # rama de desarrollo actual
-npm install
-```
-
-## Ejecución
-
-### App de escritorio (modo desarrollo)
-
-```bash
+git clone https://github.com/neshack/devise-catalog-premium.git
+cd devise-catalog-premium
+npm ci
 npm run tauri dev
 ```
 
-Abre la ventana nativa con recarga en caliente del frontend (`http://localhost:1420`).
-En Linux sin pantalla usa `xvfb-run -a npm run tauri dev`.
-
-### Solo frontend (sin backend)
+Frontend-only demo mode (no Rust backend, seeded data):
 
 ```bash
-npm run dev        # http://localhost:1420
+npm run dev   # http://localhost:1420
 ```
 
-Renderiza la UI completa en **modo demo** (badge en la barra de estado): el
-catálogo vive en memoria con datos de ejemplo, así que todas las pantallas —
-búsqueda, inspector, duplicados, escaneo, exportación — son navegables sin
-backend. Con `tauri dev` / la app compilada el badge pasa a «catálogo activo»
-y todo opera sobre el `.cdc` real.
-
-### Build de producción
+Production bundles:
 
 ```bash
 npm run tauri build
+# artifacts in src-tauri/target/release/bundle/
 ```
 
-Genera el binario + instalador en `src-tauri/target/release/bundle/`:
+On distributions whose libraries carry `.relr.dyn`, the AppImage step can fail
+inside `linuxdeploy`'s bundled `strip`. The `.deb` and `.rpm` still build; use
+`NO_STRIP=1 npm run tauri build` to produce the AppImage too.
 
-| OS | Artefacto |
-|---|---|
-| Windows | `.msi` / `.exe` (`bundle/msi`, `bundle/nsis`) |
-| Linux | `.deb` / `.AppImage` |
-| macOS | `.dmg` / `.app` |
+## Use
 
-En distros con librerías recientes el AppImage puede fallar con `failed to run
-linuxdeploy`: su `strip` no entiende la sección `.relr.dyn` de esas librerías.
-El `.deb` y el `.rpm` sí se generan; para el AppImage:
+1. Click **Escanear volumen**.
+2. Enter an absolute root (`/media/backup`, `D:\`, a mounted NAS path…), a
+   label, and optionally a serial.
+3. Watch the scan strip: phase, current file, files seen, percentage, speed and
+   remaining time. Pause, resume or cancel at any time.
+4. Select the volume in the sidebar and browse it in **Árbol**, or search from
+   the top bar (`Ctrl+K`).
+
+Search examples:
+
+```text
+*.mp3
+informe size:>5MB
+ext:{mp3,flac} size:<10MB
+volume:"Backup-12"
+Beatles
+```
+
+The catalog file is resolved in the platform app-data directory. The interface
+is in Spanish; code, comments and commits are in English.
+
+## Architecture
+
+```text
+src-tauri/
+  src/main.rs, lib.rs, commands/{scan,search,tree,export,system}.rs
+  crates/core-db       SQLite WAL + FTS5, differential upsert, tree queries
+  crates/core-scanner  cancellable jwalk walk with progress + error reporting
+  crates/core-hash     BLAKE3 partial/full hashing
+  crates/core-parsers  ID3 (lofty), EXIF (rexif), ZIP central directory
+  crates/core-export   CSV / JSON / HTML with escaping
+src/
+  lib/                 IPC, types, formatting, query parser, demo catalog
+  stores/catalog.ts    Zustand state: search, volumes, tree, scan, toasts
+  components/          SearchBar, VolumeSidebar, TreeView, ResultsList,
+                       Inspector, DuplicatesPanel, ReadingStrip, Splash…
+tests/e2e/             Playwright against demo mode
+scripts/               capture.mjs, icon.mjs, seed_large.py, signing wizard
+```
+
+The scan pipeline is deliberately free of Tauri types so it can be tested
+without a window. The UI has a demo mode that mirrors the backend command
+semantics, which is what the Playwright suite runs against.
+
+## Tests
 
 ```bash
-NO_STRIP=1 npm run tauri build
-```
+# Frontend
+npx tsc --noEmit
+npx vitest run
+npm run build
 
-El workflow de release usa `ubuntu-22.04` precisamente por esto.
-
-### Instaladores firmados (CI)
-
-`.github/workflows/release.yml` compila los tres sistemas en cada tag `v*` —o a
-mano con *Actions → release → Run workflow*— y sube los instaladores como
-artefactos del run.
-
-La firma depende de secretos del repositorio y es opcional por plataforma: sin
-ellos el mismo workflow compila y sube instaladores **sin firmar** (lo que ve
-una bifurcación o un dry-run), y con ellos firma, notariza (macOS) y **verifica
-la firma antes de publicar** — un artefacto que solo lo parece falla el job.
-
-`scripts/wizard-signing.sh` recorre la parte que solo puede hacer una persona
-(portal de Apple, autoridad certificadora, contraseñas) y deja los secretos en
-el repositorio:
-
-| Grupo | Secretos | Lo que habilita |
-|---|---|---|
-| Firma macOS | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `KEYCHAIN_PASSWORD`, `APPLE_SIGNING_IDENTITY` | `codesign` + `codesign --verify` |
-| Notarización macOS | `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | notarización + `spctl` + `stapler validate` |
-| Firma Windows | `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD` | Authenticode + `Get-AuthenticodeSignature` |
-
-Los paquetes de Linux quedan sin firma **a propósito**: `.deb` y `.AppImage` no
-tienen comprobación de firma a nivel de sistema; lo equivalente es un repositorio
-de paquetes firmado con GPG, que este proyecto todavía no publica.
-
-## Primer catálogo: escanear un volumen
-
-1. Botón **Escanear volumen** (barra lateral izquierda).
-2. Carpeta raíz absoluta (`/media/backup`, `D:\`, un NAS montado…), etiqueta
-   y — opcionalmente — nº de serie.
-3. El progreso se muestra en vivo (archivos vistos / bytes procesados) y se
-   puede cancelar. Al terminar, el volumen aparece en la barra lateral.
-
-Re-escanear el mismo volumen es **diferencial**: solo inserta/actualiza lo
-cambiado y borra lo que ya no existe.
-
-La app resuelve `catalog.cdc` en su carpeta de datos automáticamente
-(`appDataDir`). Desde consola DevTools también vale (uso manual/avanzado):
-
-```js
-const { invoke } = await import("@tauri-apps/api/core");
-await invoke("scan_volume", {
-  root: "/media/backup",
-  label: "Backup-12",
-  serial: "VOL-001",
-  dbPath: "/home/tu-usuario/catalog.cdc",  // ruta ABSOLUTA
-});
-```
-
-## Buscar
-
-En la barra de búsqueda (`Ctrl+K`, Escape limpia; los filtros activos se
-muestran como chips quitables dentro del propio campo):
-
-```
-*.mp3                    → todos los mp3
-informe size:>5MB        → "informe" de más de 5 MB
-ext:{mp3,flac} size:<10MB   → lista de extensiones + tamaño máximo
-volume:"Backup-12"       → solo ese volumen (o clic en un volumen de la barra lateral)
-Beatles                  → full-text (tolerante a * " ( ) :)
-```
-
-Sintaxis completa en `src/lib/search.ts` (frontend) y
-`src-tauri/src/commands/search.rs` (`parse_raw_query`, lado autoritativo);
-también disponible desde el botón «?» de la cabecera.
-
-### Duplicados, inspector y exportación
-
-- Pestaña **Duplicados**: grupos de archivos con idéntico hash BLAKE3
-  (`list_duplicates`), con nº de copias y espacio recuperable.
-- **Inspector** (panel derecho): ruta completa, tamaño, fecha, tipo y hash del
-  archivo seleccionado; con `file_duplicates` lista sus copias exactas en
-  otros volúmenes.
-- Menú **Exportar**: catálogo completo a CSV, JSON o HTML (`export_*`); el
-  archivo se escribe junto al `.cdc` y la ruta se muestra en un aviso.
-
-## Tests y calidad
-
-```bash
-# Rust (desde src-tauri/): unit + integración
-cargo test --workspace
-cargo fmt --check && cargo clippy --all-targets -- -D warnings
-
-# Frontend (desde la raíz)
-npx tsc --noEmit && npx vitest run && npm run build
-
-# E2E (levanta vite solo en :1420)
+# E2E (starts Vite on :1420)
 npx playwright test
 
-# Micro-bench de búsqueda FTS5
-cargo bench -p core-db -- --sample-size 10 --measurement-time 1   # (en src-tauri/)
+# Rust (from src-tauri/)
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 
-# Generar 10 000 archivos fake para probar escala
-python3 scripts/seed_large.py /tmp/cdc_seed 10000
+# FTS5 micro-benchmark
+cargo bench -p core-db -- --sample-size 10 --measurement-time 1
 ```
 
-## Estructura
+## Status and known limits
 
-```
-src-tauri/
-  src/main.rs  lib.rs  commands/{scan,search,export}.rs   # IPC Tauri
-  crates/core-db      # SQLite WAL + FTS5, upsert diferencial
-  crates/core-scanner # walk paralelo jwalk, cancelable
-  crates/core-hash    # BLAKE3 parcial/completo
-  crates/core-parsers # ID3 (lofty), EXIF (rexif), ZIP
-  crates/core-export  # CSV / JSON / HTML (con escaping)
-src/
-  lib/{search,types,format,ipc,mock}.ts  # parser de queries, tipos, formato,
-                                         # IPC Tauri + modo demo
-  stores/catalog.ts   # Zustand: búsqueda, volúmenes, escaneo, toasts
-  components/         # SearchBar (chips), VolumeSidebar, ResultsList (virtual),
-                      # Inspector, DuplicatesPanel, ScanDialog, ExportMenu,
-                      # Toasts, StatusBar, icons (SVG)
-tests/e2e/            # Playwright (corren sobre el modo demo)
-scripts/capture.mjs   # capturas de la UI para revisión visual
-scripts/wizard-signing.sh  # secretos de firma para el CI (portal Apple, CA)
-scripts/seed_large.py # 10 000 archivos fake para probar escala
-docs/superpowers/
-  specs/2026-09-05-cd-catalog-premium-design.md  # diseño aprobado
-  plans/2026-09-05-cd-catalog-premium.md         # plan de implementación
-```
+- ✅ Differential scans, FTS5 search, tree, duplicates, exports, ZIP entries.
+- ✅ Pause/resume/cancel and recovery of interrupted scans.
+- ✅ Safe volume removal and automatic migration from the old app identity.
+- 🔜 7z and ISO container parsers (ZIP is the only container today).
+- 🔜 Archive entries are indexed but not hashed, so they do not participate in
+  duplicate detection until extracted.
+- 🔜 No auto-updater and no signed Linux package repository yet.
+- Windows/macOS code signing is wired in CI but requires purchased
+  certificates; without secrets the workflow ships unsigned builds.
 
-## Estado del MVP y límites conocidos
+## Contributing
 
-- ✅ Escaneo diferencial, búsqueda <100 ms, duplicados por BLAKE3, export.
-- ✅ UI completa: escaneo con progreso en vivo, vista Duplicados, inspector
-  con copias idénticas por hash, exportación, chips de filtros, modo demo.
-- ✅ Metadatos leídos por el escáner y visibles en el Inspector: ID3 vía
-  `lofty` (intérprete, álbum, bitrate) y EXIF vía `rexif` (dimensiones).
-- ✅ Contenido de los ZIP indexado sin extraer: una fila por entrada, con el
-  ZIP de origen visible en la fila y en el Inspector.
-- ✅ Empaquetado en los tres sistemas (`release.yml`): firmado y notarizado en
-  macOS y firmado en Windows cuando los secretos están puestos, sin firma en
-  Linux (`.deb`/`.AppImage` no verifican firmas).
-- 🔜 7z e ISO siguen pendientes: `zip` es hoy el único parser de contenedores.
-- 🔜 La firma real todavía no se ha estrenado: el workflow y el asistente están
-  listos, pero los certificados de Apple y de la CA se compran aparte.
-- El catálogo es un archivo: llévalo a otro PC y ábrelo intacto.
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md)
+and the [Code of Conduct](CODE_OF_CONDUCT.md) first. Security reports go
+through [SECURITY.md](SECURITY.md), not public issues. Maintainers can find the
+release checklist in [docs/PUBLISHING.md](docs/PUBLISHING.md).
+
+## License
+
+[MIT](LICENSE) © 2026 Nestor Peña.
+
+The bundled fonts (Archivo and JetBrains Mono) are licensed under the SIL Open
+Font License; their license files live in `src/assets/fonts/`.
+
+Built by [@neshack](https://x.com/neshack).

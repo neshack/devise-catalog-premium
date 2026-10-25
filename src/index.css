@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------------------
-   CD Catalog Premium — sistema de diseño
+   Devise Catalog Premium — sistema de diseño
    Mundo: TERMINAL DE INVENTARIO (bloqueado 2026-10-18)
    Panel industrial de esmalte grafito + etiquetas de activo + lectura láser.
    Tres capas: primitivas → semánticas → componentes.
@@ -120,10 +120,95 @@
   --key-bevel: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 1px 0 rgba(0, 0, 0, 0.9);
   --key-bevel-press: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   --focus-ring: inset 0 0 0 1px var(--accent-border);
+  --overlay: rgba(5, 6, 5, 0.72);
+  --selection: rgba(255, 172, 28, 0.3);
+  --selection-fg: #fff;
+  --inset-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.65);
+  --inset-shadow-soft: inset 0 2px 3px rgba(0, 0, 0, 0.5);
+  --active-bevel: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --led-inset: inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+  --accent-button-border: #b9791a;
+  --accent-button-hover: #ffca57;
+  --accent-soft-strong: rgba(255, 172, 28, 0.18);
+  --ok-border: rgba(143, 217, 106, 0.4);
+  --splash-bg:
+    radial-gradient(1100px 680px at 50% 26%, rgba(255, 172, 28, 0.08), transparent 62%),
+    radial-gradient(900px 520px at 50% 112%, rgba(106, 124, 245, 0.08), transparent 62%),
+    var(--g-950);
+  --splash-frame-bg: linear-gradient(180deg, rgba(30, 35, 31, 0.92), rgba(17, 20, 19, 0.97));
+  --splash-frame-bevel: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --splash-grain: rgba(255, 255, 255, 0.035);
 
   /* leyendas grabadas (labels de sección, cabeceras de columna) */
   --legend-size: 10px;
   --legend-track: 0.18em;
+}
+
+/* ---------- tema claro ---------- */
+/*
+   No es una inversión: es el mismo inventario sobre papel cálido. El ámbar
+   de la marca se oscurece cuando se usa como tinta (AA), pero sigue vivo en
+   los indicadores y en el botón primario. El espectro sólo aparece en la
+   marca y en la lectura, igual que en oscuro.
+*/
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f4f2ec;
+  --surface-1: #fbfaf6;
+  --surface-2: #f1efe8;
+  --surface-3: #e7e4db;
+  --surface-hover: #efede6;
+  --surface-sunken: #e9e6dd;
+
+  --fg: #121512;
+  --fg-muted: #3f4741;
+  --fg-faint: #59625b;
+
+  --border: #d5d1c6;
+  --border-strong: #b9b4a6;
+
+  --accent: #8a4f00;
+  --accent-hover: #6f3f00;
+  --accent-down: #a36100;
+  --on-accent: #1a1204;
+  --accent-soft: rgba(138, 79, 0, 0.1);
+  --accent-border: rgba(138, 79, 0, 0.38);
+
+  --danger: #b42318;
+  --danger-soft: rgba(180, 35, 24, 0.09);
+  --danger-border: rgba(180, 35, 24, 0.35);
+  --warning: #8a4f00;
+  --info: var(--fg-muted);
+  --ring: #8a4f00;
+
+  --led-amber-deep: #8a4f00;
+  --ok-led: #3f7a1f;
+
+  --shadow-1: 0 1px 2px rgba(40, 35, 28, 0.12);
+  --shadow-2: 0 12px 32px rgba(40, 35, 28, 0.16), 0 2px 6px rgba(40, 35, 28, 0.1);
+  --key-face: linear-gradient(#fbfaf6, #efede6);
+  --key-bevel: inset 0 1px 0 rgba(255, 255, 255, 0.85), 0 1px 0 rgba(40, 35, 28, 0.18);
+  --key-bevel-press: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  --focus-ring: inset 0 0 0 1px var(--accent-border);
+  --overlay: rgba(38, 34, 28, 0.42);
+  --selection: rgba(138, 79, 0, 0.18);
+  --selection-fg: #121512;
+  --inset-shadow: inset 0 2px 3px rgba(40, 35, 28, 0.12);
+  --inset-shadow-soft: inset 0 2px 3px rgba(40, 35, 28, 0.09);
+  --active-bevel: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --led-inset: inset 0 0 0 1px rgba(40, 35, 28, 0.18);
+  --accent-button-border: #a36100;
+  --accent-button-hover: #ffc043;
+  --accent-soft-strong: rgba(138, 79, 0, 0.14);
+  --ok-border: rgba(63, 122, 31, 0.35);
+  --splash-bg:
+    radial-gradient(1100px 680px at 50% 26%, rgba(138, 79, 0, 0.08), transparent 62%),
+    radial-gradient(900px 520px at 50% 112%, rgba(106, 124, 245, 0.1), transparent 62%),
+    #f4f2ec;
+  --splash-frame-bg: linear-gradient(180deg, rgba(251, 250, 246, 0.96), rgba(241, 239, 232, 0.98));
+  --splash-frame-bevel: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --splash-grain: rgba(40, 35, 28, 0.05);
 }
 
 /* ---------- 3. base ---------- */
@@ -151,8 +236,8 @@ body {
 }
 
 ::selection {
-  background: rgba(255, 172, 28, 0.3);
-  color: #fff;
+  background: var(--selection);
+  color: var(--selection-fg);
 }
 
 :focus {
@@ -355,13 +440,13 @@ p {
 
 .btn--primary {
   background: linear-gradient(var(--led-amber-hi), var(--led-amber-lo));
-  border-color: #b9791a;
+  border-color: var(--accent-button-border);
   color: var(--on-accent);
 }
 
 .btn--primary:hover {
-  background: linear-gradient(#ffca57, var(--led-amber));
-  border-color: #b9791a;
+  background: linear-gradient(var(--accent-button-hover), var(--led-amber));
+  border-color: var(--accent-button-border);
 }
 
 .btn--primary:active {
@@ -424,7 +509,7 @@ p {
   background: var(--surface-sunken);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-s);
-  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.65);
+  box-shadow: var(--inset-shadow);
   transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
 
@@ -434,7 +519,7 @@ p {
 
 .searchbar:focus-within {
   border-color: var(--accent-border);
-  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.65), var(--focus-ring);
+  box-shadow: var(--inset-shadow), var(--focus-ring);
 }
 
 .searchbar__icon {
@@ -536,7 +621,7 @@ p {
 
 .chip__remove:hover {
   opacity: 1;
-  background: rgba(255, 172, 28, 0.18);
+  background: var(--accent-soft-strong);
 }
 
 .kbd {
@@ -662,7 +747,7 @@ p {
 .side-item.is-active {
   background: var(--surface-3);
   border-color: var(--border-strong);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: var(--active-bevel);
 }
 
 /* lámpara de actividad: encendida = filtro activo */
@@ -671,7 +756,7 @@ p {
   height: 24px;
   border-radius: 1px;
   background: var(--g-700);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--led-inset);
 }
 
 .side-item.is-active .side-item__led {
@@ -761,7 +846,7 @@ p {
   align-items: center;
   gap: 10px 18px;
   padding: 9px 16px;
-  background: var(--g-900);
+  background: var(--surface-2);
   border-bottom: 1px solid var(--border-strong);
 }
 
@@ -1525,7 +1610,7 @@ p {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(5, 6, 5, 0.72);
+  background: var(--overlay);
   display: grid;
   place-items: center;
   z-index: 100;
@@ -1658,7 +1743,7 @@ p {
   background: var(--surface-sunken);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-s);
-  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--inset-shadow-soft);
   color: var(--fg);
   font-size: 13px;
   width: 100%;
@@ -1676,7 +1761,7 @@ p {
 .input:focus {
   outline: none;
   border-color: var(--accent-border);
-  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.5), var(--focus-ring);
+  box-shadow: var(--inset-shadow-soft), var(--focus-ring);
 }
 
 .input--mono {
@@ -1710,10 +1795,7 @@ p {
   display: grid;
   place-items: center;
   overflow: hidden;
-  background:
-    radial-gradient(1100px 680px at 50% 26%, rgba(255, 172, 28, 0.08), transparent 62%),
-    radial-gradient(900px 520px at 50% 112%, rgba(106, 124, 245, 0.08), transparent 62%),
-    var(--g-950);
+  background: var(--splash-bg);
   animation: splash-in 260ms var(--ease-out);
 }
 
@@ -1729,7 +1811,7 @@ p {
   opacity: 0.45;
   background-image: repeating-linear-gradient(
     0deg,
-    rgba(255, 255, 255, 0.035) 0 1px,
+    var(--splash-grain) 0 1px,
     transparent 1px 4px
   );
   mix-blend-mode: overlay;
@@ -1741,8 +1823,8 @@ p {
   padding: 40px 44px 30px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-l);
-  background: linear-gradient(180deg, rgba(30, 35, 31, 0.92), rgba(17, 20, 19, 0.97));
-  box-shadow: var(--shadow-2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  background: var(--splash-frame-bg);
+  box-shadow: var(--shadow-2), var(--splash-frame-bevel);
   text-align: center;
 }
 
@@ -1986,6 +2068,15 @@ p {
   color: var(--fg-faint);
 }
 
+.menu__check {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.menu__item[aria-checked="true"] {
+  color: var(--fg);
+}
+
 .menu__label {
   padding: 6px 8px 2px;
   font-size: var(--legend-size);
@@ -2071,7 +2162,7 @@ p {
 }
 
 .toast--success {
-  border-color: rgba(143, 217, 106, 0.4);
+  border-color: var(--ok-border);
 }
 
 .toast--success .toast__icon {

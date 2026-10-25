@@ -1,10 +1,18 @@
 [package]
-name = "cd-catalog-premium"
+name = "devise-catalog-premium"
 version = "0.3.0"
 edition = "2021"
+rust-version = "1.87"
+description = "Offline-first desktop catalog for discs, USB drives, NAS and archives."
+authors = ["Nestor Peña (neshack)"]
+license = "MIT"
+repository = "https://github.com/neshack/devise-catalog-premium"
+homepage = "https://github.com/neshack/devise-catalog-premium#readme"
+keywords = ["tauri", "sqlite", "catalog", "offline", "file-indexer"]
+categories = ["database", "filesystem"]
 
 [lib]
-name = "cd_catalog_premium_lib"
+name = "devise_catalog_premium_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

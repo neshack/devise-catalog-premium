@@ -1,8 +1,8 @@
-# CD Catalog Premium — Design Spec
+# Devise Catalog Premium — Design Spec
 
 **Fecha:** 2026-09-05
 **Estado:** Aprobado por usuario (brainstorming architectural path)
-**Repo:** `cd_catalog_premium` (greenfield)
+**Repo:** `devise_catalog_premium` (greenfield)
 **Origen:** Reimaginación moderna de CD Catalog Expert (Win32, Jet .mdb, FindFirstFile, ID3/EXIF, ZIP/RAR/ARJ/CAB, CDDB, export TXT/CSV/HTML/XML)
 
 ## 1. Resumen y decisiones base

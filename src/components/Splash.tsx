@@ -70,7 +70,7 @@ export default function Splash() {
       className={`splash${leaving ? " is-leaving" : ""}`}
       role="dialog"
       aria-modal="true"
-      aria-label="Presentación de CD Catalog Premium"
+      aria-label="Presentación de Devise Catalog Premium"
       onClick={dismiss}
     >
       <div className="splash__grain" aria-hidden="true" />
@@ -81,7 +81,7 @@ export default function Splash() {
 
         <div className="splash__eyebrow">Catálogo local · sin nube</div>
         <h1 className="splash__title">
-          CD Catalog
+          Devise Catalog
           <span>Premium</span>
         </h1>
         <p className="splash__lede">

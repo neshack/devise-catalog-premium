@@ -8,6 +8,7 @@ import ScanDialog from "./components/ScanDialog";
 import SearchBar, { SearchHelpButton } from "./components/SearchBar";
 import Splash from "./components/Splash";
 import StatusBar from "./components/StatusBar";
+import ThemeMenu from "./components/ThemeMenu";
 import TreeView from "./components/TreeView";
 import Toasts from "./components/Toasts";
 import VolumeSidebar from "./components/VolumeSidebar";
@@ -15,6 +16,7 @@ import { LogoMark } from "./components/Brand";
 import { IconDuplicates, IconFolder, IconTable } from "./components/icons";
 import { APP_VERSION } from "./lib/ipc";
 import { useCatalog } from "./stores/catalog";
+import { useTheme } from "./stores/theme";
 import type { SortKey } from "./lib/types";
 
 function SortSelect() {
@@ -52,11 +54,14 @@ export default function App() {
     searchStatus,
     elapsedMs,
   } = useCatalog();
+  const { init: initTheme } = useTheme();
 
   useEffect(() => {
     void init();
     // one-time session init
   }, [init]);
+
+  useEffect(() => initTheme(), [initTheme]);
 
   // Debounced live search as the query or the volume filter changes.
   useEffect(() => {
@@ -72,7 +77,7 @@ export default function App() {
             <LogoMark size={28} />
           </span>
           <span className="brand-name">
-            CD Catalog
+            Devise Catalog
             <span className="brand-sub">
               Premium <span className="brand-version">v{APP_VERSION}</span>
             </span>
@@ -82,6 +87,7 @@ export default function App() {
         <SearchBar />
 
         <div className="header-actions">
+          <ThemeMenu />
           <SearchHelpButton />
           <div className="divider-v" />
           <ExportMenu />

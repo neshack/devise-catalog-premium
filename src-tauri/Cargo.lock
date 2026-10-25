@@ -367,22 +367,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cd-catalog-premium"
-version = "0.3.0"
-dependencies = [
- "core-db",
- "core-export",
- "core-hash",
- "core-parsers",
- "core-scanner",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tempfile",
-]
-
-[[package]]
 name = "cesu8"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -928,6 +912,22 @@ dependencies = [
  "quote",
  "rustc_version",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "devise-catalog-premium"
+version = "0.3.0"
+dependencies = [
+ "core-db",
+ "core-export",
+ "core-hash",
+ "core-parsers",
+ "core-scanner",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tempfile",
 ]
 
 [[package]]

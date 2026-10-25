@@ -23,7 +23,7 @@ fn flac_fixture(artist: &str, album: &str) -> Vec<u8> {
     out.extend_from_slice(&streaminfo);
 
     let mut vorbis = Vec::new();
-    let vendor = b"cd-catalog-tests";
+    let vendor = b"devise-catalog-tests";
     vorbis.extend_from_slice(&(vendor.len() as u32).to_le_bytes());
     vorbis.extend_from_slice(vendor);
     let comments = [format!("ARTIST={artist}"), format!("ALBUM={album}")];

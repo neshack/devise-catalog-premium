@@ -2,18 +2,17 @@
 
 <!-- impeccable:product-schema 1 -->
 
-<!-- Derived 2026-10-18 from the repository itself: docs/superpowers/specs/
-     2026-09-05-cd-catalog-premium-design.md, README.md, the Rust commands and
+<!-- Derived 2026-10-25 from the repository itself: docs/superpowers/specs/
+     2026-09-05-devise-catalog-premium-design.md, README.md, the Rust commands and
      the shipped UI copy. Marked inferred where the spec does not state it;
-     correct anything that reads wrong. No interview round was held: the user
-     asked for the redesign in the same message as the other four fixes. -->
+     correct anything that reads wrong. -->
 
 ## Platform
 
-web
+desktop
 
-<!-- The design language is web: a Tauri v2 shell around a React web view.
-     Desktop window, 1280×800 default, 960×600 minimum. No mobile, no touch. -->
+<!-- A Tauri v2 shell around a React web view. Desktop window, 1280×800
+     default, 960×600 minimum. No mobile, no touch. -->
 
 ## Stack
 
@@ -33,10 +32,11 @@ team tool, not a shared catalog, not a service.
 
 ## Product Purpose
 
-Offline successor of CD Catalog Expert. Scans whole volumes (discs, USB, NAS,
-ISOs) and lets the user search the catalog **without the media being inserted**.
-Success is: any question about "where is this file?" answered in under a second,
-from a catalog that was built once and stays honest as disks change.
+Offline successor of the original **CD Catalog Expert**. Scans whole volumes
+(discs, USB, NAS, ISOs) and lets the user search the catalog **without the media
+being inserted**. Success is: any question about "where is this file?" answered
+in under a second, from a catalog that was built once and stays honest as disks
+change. The product was renamed **Devise Catalog Premium** in 0.3.0.
 
 ## Positioning
 
@@ -62,31 +62,38 @@ it to work.
 ## Capabilities and Constraints
 
 Confirmed: volume scan with differential re-scan; full-text search with filters
-(extension, size, volume) over a virtualized result list; duplicate groups;
-inspector with audio/image metadata and "inside <archive>" provenance; ZIP
-contents indexed without extracting them; exports (CSV, JSON, M3U); a .cdc
-catalog file; demo mode with seeded data.
+(extension, size, volume) over a virtualized result list; tree view with one
+level per query; duplicate groups by BLAKE3; inspector with audio/image
+metadata and "inside <archive>" provenance; ZIP contents indexed without
+extracting them; exports (CSV, JSON, HTML); a .cdc catalog file; demo mode with
+seeded data; light, dark and system themes with persisted preference.
+
+Scan attempts persist in `scan_runs` with a heartbeat, so a suspended or killed
+process can be resumed. Pausing parks the walk without busy-waiting. Unreadable
+paths are written to `scan_errors`. Removing a volume requires typing its label
+and never touches the disk; the old `com.cdcatalog.premium` catalog is copied
+into the new `com.devise.catalog` data directory on first launch.
 
 Terminology in play: volumen, escaneo, catálogo, entrada (fila dentro de un
 contenedor), contenedor, duplicados, ficha.
 
-Undecided / not built: 7z and ISO container parsers; the `scan_errors` table is
-declared but never written; no updater; Linux packages ship unsigned by design.
+Undecided / not built: 7z and ISO container parsers; archive entries are not
+hashed, so they do not participate in duplicate detection; no updater; Linux
+packages ship unsigned by design.
 
 ## Brand Commitments
 
-- The product name is **CD Catalog Premium** and stays.
-- The app icon set shipped to date is the Tauri default (placeholder); there is
-  no owner-drawn mark yet. The user asked for a real icon and logo, visible
-  inside the app as well.
+- The product name is **Devise Catalog Premium** and stays.
+- The mark is a disc read by a spectral arc. The same geometry lives in the
+  in-app logo, the favicon and the generated OS icon set.
 - Spanish is the interface language, including error and empty-state copy.
 - No accounts, no telemetry, no network: this is a promise, not a setting.
 
 ## Evidence on Hand
 
-- `docs/superpowers/specs/2026-09-05-cd-catalog-premium-design.md` — the design
+- `docs/superpowers/specs/2026-09-05-devise-catalog-premium-design.md` — the design
   spec, including the five MVP success criteria (§7).
-- `screenshots/*.png` — seven captures of the incumbent UI, produced by
+- `docs/images/*.png` — reviewed captures of the shipped UI, produced by
   `scripts/capture.mjs` (Playwright) against demo mode.
 - `src/lib/mock.ts` — seeded demo catalog (volumes, files, ZIP entries,
   duplicates) usable as honest demo material.
