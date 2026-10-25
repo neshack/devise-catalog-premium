@@ -220,6 +220,17 @@ pub fn list_volumes(db_path: String) -> Result<Vec<core_db::VolumeSummary>, Stri
     db.list_volumes().map_err(|e| e.to_string())
 }
 
+/// Forget a volume. The catalog loses its rows; the disk keeps every file.
+#[tauri::command]
+pub fn delete_volume(db_path: String, volume_id: i64) -> Result<(), String> {
+    let db = Db::open(Path::new(&db_path)).map_err(|e| e.to_string())?;
+    let removed = db.delete_volume(volume_id).map_err(|e| e.to_string())?;
+    if removed == 0 {
+        return Err("el volumen ya no existe en el catálogo".to_string());
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn file_duplicates(
     db_path: String,

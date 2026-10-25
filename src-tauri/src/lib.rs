@@ -12,6 +12,17 @@ pub mod commands;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // The title bar is the one place a window always states what it is.
+        // The version comes from the package metadata, the same source the
+        // installer uses, so a reinstall is visible without opening a menu.
+        .setup(|app| {
+            use tauri::Manager;
+            let version = app.package_info().version.to_string();
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_title(&format!("{} v{}", APP_NAME, version));
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::scan::scan_volume,
             commands::scan::cancel_scan,
@@ -19,12 +30,14 @@ pub fn run() {
             commands::scan::resume_scan,
             commands::scan::scan_status,
             commands::scan::recover_stale_scans,
+            commands::system::open_twitter,
             commands::tree::tree_children,
             commands::search::search,
             commands::search::get_hit,
             commands::search::list_duplicates,
             commands::search::get_volume,
             commands::search::list_volumes,
+            commands::search::delete_volume,
             commands::search::file_duplicates,
             commands::export::export_csv,
             commands::export::export_json,

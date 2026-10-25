@@ -98,7 +98,7 @@ impl Catalog {
 fn list_volumes_aggregates_counts_and_sizes() {
     let c = Catalog::new();
     let music = c.volume("Musica-90s", "SER-1");
-    let empty = c.volume("USB-Vacia", "SER-2");
+    let _empty = c.volume("USB-Vacia", "SER-2");
     let songs = c.dir(music, None, "Musica", "h-music");
     c.file(music, songs, "song.flac", 30_000_000, Some("hash-a"));
     c.file(music, songs, "song.mp3", 6_000_000, Some("hash-b"));
@@ -343,4 +343,79 @@ fn tree_walks_one_level_at_a_time_with_direct_counts() {
     // An unknown volume is an error, not an empty tree: saying "nothing here"
     // about a disk that was never indexed would be a lie.
     assert!(c.db.tree_children("No-Existe", None, None).is_err());
+}
+
+#[test]
+fn deleting_a_volume_removes_only_its_catalog_rows() {
+    let c = Catalog::new();
+    let keep = c.volume("Keep-01", "SER-1");
+    let gone = c.volume("Gone-01", "SER-2");
+    let keep_dir = c.dir(keep, None, "/", "h-keep");
+    let gone_dir = c.dir(gone, None, "/", "h-gone");
+    c.file(keep, keep_dir, "keep.txt", 10, Some("keep-hash"));
+    c.file(gone, gone_dir, "gone.txt", 20, Some("gone-hash"));
+    c.db.replace_scan_errors(gone, &[("/media/gone/roto".into(), "sin permiso".into())])
+        .unwrap();
+    c.db.start_scan_run(gone, "/media/gone", "walk").unwrap();
+
+    assert_eq!(c.db.delete_volume(gone).unwrap(), 1);
+
+    // The volume and everything hanging from it are gone…
+    let volumes = c.volumes();
+    assert_eq!(volumes.len(), 1);
+    assert_eq!(volumes[0].label, "Keep-01");
+    assert!(c.db.dirs_for_volume(gone).unwrap().is_empty());
+    assert!(c.db.scan_errors(gone).unwrap().is_empty());
+    assert!(c.db.latest_scan_run().unwrap().is_none());
+
+    // …and the other volume is untouched.
+    assert_eq!(c.hits("").len(), 1);
+    assert_eq!(c.hits("").into_iter().next().unwrap().name, "keep.txt");
+
+    // Deleting something already gone is a no-op, not a panic.
+    assert_eq!(c.db.delete_volume(gone).unwrap(), 0);
+}
+
+#[test]
+fn search_can_disambiguate_two_volumes_with_the_same_label() {
+    let c = Catalog::new();
+    let first = c.volume("Backup", "SER-A");
+    let second = c.volume("Backup", "SER-B");
+    let first_dir = c.dir(first, None, "/", "h-first");
+    let second_dir = c.dir(second, None, "/", "h-second");
+    c.file(first, first_dir, "primero.txt", 1, None);
+    c.file(second, second_dir, "segundo.txt", 2, None);
+
+    let q = |serial: &str| ParsedQuery {
+        fts: String::new(),
+        ext: None,
+        exts: Vec::new(),
+        min_size: None,
+        max_size: None,
+        volume: Some("Backup".into()),
+        volume_serial: Some(serial.into()),
+    };
+
+    let hits = c.db.search(&q("SER-B"), 100).unwrap();
+    assert_eq!(hits.len(), 1, "the label alone must not mix both discs");
+    assert_eq!(hits[0].name, "segundo.txt");
+    assert_eq!(hits[0].volume_label, "Backup");
+}
+
+#[test]
+fn get_hit_returns_one_indexed_row_by_id() {
+    let c = Catalog::new();
+    let volume = c.volume("Fotos", "SER-1");
+    let root = c.dir(volume, None, "/", "h-root");
+    let trip = c.dir(volume, Some(root), "2024", "h-trip");
+    c.file(volume, trip, "IMG_0001.jpg", 4_000, Some("hash-1"));
+
+    let id = c.id_of("IMG_0001.jpg");
+    let hit = c.db.get_hit(id).unwrap().expect("indexed row");
+    assert_eq!(hit.name, "IMG_0001.jpg");
+    assert_eq!(hit.path, "/2024");
+    assert_eq!(hit.volume_label, "Fotos");
+    assert_eq!(hit.size, 4_000);
+
+    assert!(c.db.get_hit(id + 999).unwrap().is_none());
 }

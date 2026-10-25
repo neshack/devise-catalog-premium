@@ -110,6 +110,29 @@ export const IconRefresh = (p: IconProps) =>
 export const IconSpinner = (p: IconProps) =>
   base(p.size ?? 16, <path d="M12 3a9 9 0 1 0 9 9" className="spinner" />, p.className);
 
+export const IconTrash = (p: IconProps) =>
+  base(
+    p.size,
+    <>
+      <path d="M4 7h16" />
+      <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+      <path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" />
+      <path d="M10 11v6M14 11v6" />
+    </>,
+    p.className,
+  );
+
+export const IconExternal = (p: IconProps) =>
+  base(
+    p.size,
+    <>
+      <path d="M14 4h6v6" />
+      <path d="m20 4-9 9" />
+      <path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5" />
+    </>,
+    p.className,
+  );
+
 const KIND_ICON: Record<FileKind, (p: IconProps) => JSX.Element> = {
   audio: IconMusic,
   image: IconImage,

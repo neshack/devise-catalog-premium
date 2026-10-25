@@ -22,6 +22,9 @@ pub struct VolumeInfo {
 
 #[derive(Debug, PartialEq, serde::Serialize)]
 pub struct VolumeSummary {
+    /// Stable identity. Labels repeat (two `Backup` discs are a real case),
+    /// so every action that changes a volume must use this, never the label.
+    pub id: i64,
     pub label: String,
     pub serial: String,
     pub indexed_at: Option<i64>,
@@ -278,22 +281,34 @@ impl Db {
     pub fn list_volumes(&self) -> Result<Vec<VolumeSummary>> {
         let c = self.conn.lock().map_err(|_| lock_err())?;
         let mut stmt = c.prepare(
-            "SELECT v.label, v.serial, v.indexed_at, COUNT(f.id), COALESCE(SUM(f.size), 0) \
+            "SELECT v.id, v.label, v.serial, v.indexed_at, COUNT(f.id), COALESCE(SUM(f.size), 0) \
              FROM volumes v LEFT JOIN files f ON f.volume_id = v.id \
              GROUP BY v.id ORDER BY v.indexed_at DESC, v.label ASC",
         )?;
         let rows = stmt
             .query_map([], |r| {
                 Ok(VolumeSummary {
-                    label: r.get(0)?,
-                    serial: r.get(1)?,
-                    indexed_at: r.get(2)?,
-                    file_count: r.get(3)?,
-                    total_size: r.get(4)?,
+                    id: r.get(0)?,
+                    label: r.get(1)?,
+                    serial: r.get(2)?,
+                    indexed_at: r.get(3)?,
+                    file_count: r.get(4)?,
+                    total_size: r.get(5)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    /// Remove a volume from the catalog: its files, folders, scan history and
+    /// unreadable-path list go with it through the schema's cascades.
+    ///
+    /// This never touches the disk. The catalog is an index, and forgetting a
+    /// disc must be recoverable by scanning it again.
+    pub fn delete_volume(&self, id: i64) -> Result<usize> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let n = c.execute("DELETE FROM volumes WHERE id=?1", params![id])?;
+        Ok(n)
     }
     pub fn insert_dir(
         &self,

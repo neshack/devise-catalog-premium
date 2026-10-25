@@ -21,6 +21,8 @@ export interface Hit {
 }
 
 export interface VolumeSummary {
+  /** Stable identity: labels can repeat, ids cannot. */
+  id: number;
   label: string;
   serial: string;
   indexed_at: number | null;

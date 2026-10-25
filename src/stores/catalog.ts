@@ -117,6 +117,8 @@ interface CatalogState {
   select: (h: Hit | null) => void;
   setView: (v: View) => void;
   setVolumeFilter: (volume: { label: string; serial: string } | null) => void;
+  /** Forget a volume from the catalog. The files on disk are never touched. */
+  deleteVolume: (volume: VolumeSummary) => Promise<void>;
   /** Read (or re-read) the top level of the volume the tree is showing. */
   loadTree: () => Promise<void>;
   /** Open a folder, reading it the first time; close it when already open. */
@@ -222,7 +224,7 @@ export const useCatalog = create<CatalogState>((set, get) => ({
         dbPath: get().dbPath,
         raw: effective,
         limit: 200,
-        volume_serial: volumeFilter?.serial ?? null,
+        volumeSerial: volumeFilter?.serial ?? null,
       });
       const elapsed = performance.now() - t0;
       // Ignore stale responses after rapid edits.
@@ -253,7 +255,7 @@ export const useCatalog = create<CatalogState>((set, get) => ({
   select: (h) => {
     set({ selected: h, fileDups: [], fileDupsLoading: h !== null });
     if (h === null) return;
-    void call<FileDuplicate[]>("file_duplicates", { dbPath: get().dbPath, file_id: h.id })
+    void call<FileDuplicate[]>("file_duplicates", { dbPath: get().dbPath, fileId: h.id })
       .then((dups) => {
         if (get().selected?.id === h.id) set({ fileDups: dups, fileDupsLoading: false });
       })
@@ -272,6 +274,41 @@ export const useCatalog = create<CatalogState>((set, get) => ({
     const changed =
       prev?.label !== volumeFilter?.label || prev?.serial !== volumeFilter?.serial;
     if (changed) set({ volumeFilter, tree: EMPTY_TREE, view: "tree" });
+  },
+
+  deleteVolume: async (volume) => {
+    if (get().scan.running) {
+      get().pushToast("error", "Espera a que termine el escaneo antes de eliminar un volumen.");
+      return;
+    }
+    try {
+      await call("delete_volume", { dbPath: get().dbPath, volumeId: volume.id });
+      const current = get().volumeFilter;
+      const isCurrent =
+        current?.label === volume.label && current?.serial === volume.serial;
+      set({
+        volumes: get().volumes.filter((v) => v.id !== volume.id),
+        // A deleted volume cannot stay selected, and its rows cannot stay in
+        // the inspector: both would point at something the catalog no longer
+        // knows.
+        selected: null,
+        fileDups: [],
+        ...(isCurrent
+          ? { volumeFilter: null, tree: EMPTY_TREE, hits: [], view: "tree" as const }
+          : {}),
+      });
+      await get().refreshVolumes();
+      await get().refreshScan();
+      // Results are a snapshot: re-run the query so rows from the volume that
+      // just left the catalog cannot linger on screen.
+      await get().runSearch();
+      get().pushToast(
+        "success",
+        `Volumen «${volume.label}» eliminado del catálogo. Los archivos del disco siguen intactos.`,
+      );
+    } catch (e) {
+      get().pushToast("error", `No se pudo eliminar el volumen: ${String(e)}`);
+    }
   },
 
   loadTree: async () => {
@@ -422,7 +459,7 @@ export const useCatalog = create<CatalogState>((set, get) => ({
 
   selectTreeFile: async (fileId) => {
     try {
-      const hit = await call<Hit | null>("get_hit", { dbPath: get().dbPath, file_id: fileId });
+      const hit = await call<Hit | null>("get_hit", { dbPath: get().dbPath, fileId });
       if (hit !== null) get().select(hit);
     } catch (e) {
       get().pushToast("error", `No se pudo abrir el archivo seleccionado: ${String(e)}`);
@@ -431,7 +468,7 @@ export const useCatalog = create<CatalogState>((set, get) => ({
 
   runExport: async (fmt) => {
     try {
-      const dest = await call<string>("export_" + fmt, { dbPath: get().dbPath, out_path: null });
+      const dest = await call<string>("export_" + fmt, { dbPath: get().dbPath, outPath: null });
       get().pushToast("success", `Catálogo exportado (${fmt.toUpperCase()}) → ${dest}`);
     } catch (e) {
       get().pushToast("error", `Error al exportar: ${String(e)}`);

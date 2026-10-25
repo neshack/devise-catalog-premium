@@ -9,10 +9,19 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const shot = (name) => page.screenshot({ path: `${OUT}/${name}.png` });
 
+// The presentation is skipped for automated browsers; force it for the shot.
+const splash = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+await splash.goto("http://localhost:1420/?splash=1");
+await splash.waitForTimeout(900);
+await splash.screenshot({ path: `${OUT}/00-splash.png` });
+await splash.close();
+
 await page.goto("http://localhost:1420");
 await page.waitForTimeout(700);
 await shot("01-empty");
 
+// The tree is the default view; results are one tab away.
+await page.getByRole("tab", { name: /resultados/i }).click();
 await page.getByRole("textbox", { name: "Buscar en el catálogo" }).fill("*.jpg");
 await page.waitForTimeout(700);
 await shot("02-results");
@@ -51,7 +60,7 @@ await page.waitForTimeout(600);
 await shot("07-zip-entry");
 
 // the tree: one volume, read folder by folder
-await page.getByRole("button", { name: /Fotos-2024/ }).click();
+await page.getByRole("complementary", { name: /volúmenes/i }).getByText("Fotos-2024").click();
 await page.getByRole("tab", { name: /árbol/i }).click();
 await page.waitForTimeout(700);
 await page.getByTestId("tree-row").first().click();
@@ -59,6 +68,14 @@ await page.waitForTimeout(500);
 await page.getByTestId("tree-row").nth(1).click();
 await page.waitForTimeout(600);
 await shot("08-tree");
+
+// removing a volume: the deliberate confirmation, not a stray click
+await page.getByRole("complementary", { name: /volúmenes/i }).getByText("Fotos-2024").hover();
+await page.getByRole("button", { name: /Eliminar volumen Fotos-2024/i }).click();
+await page.waitForTimeout(500);
+await shot("12-delete-volume");
+await page.keyboard.press("Escape");
+await page.waitForTimeout(300);
 
 // scan in progress: the strip stays visible even with the dialog closed
 await page.getByRole("button", { name: /escanear volumen/i }).click();

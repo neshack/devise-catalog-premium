@@ -4,7 +4,10 @@ test("el árbol recorre un volumen carpeta por carpeta", async ({ page }) => {
   await page.goto("http://localhost:1420");
 
   // The tree walks one volume at a time, so it needs one chosen first.
-  await page.getByRole("button", { name: /Fotos-2024/ }).click();
+  await page
+    .getByRole("complementary", { name: /volúmenes/i })
+    .getByText("Fotos-2024")
+    .click();
   await expect(page.getByRole("tab", { name: /árbol/i })).toHaveAttribute("aria-selected", "true");
 
   const tree = page.getByRole("tree");

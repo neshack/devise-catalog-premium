@@ -228,15 +228,38 @@ function toHit(f: MockFile): Hit {
   };
 }
 
+// Stable demo identities: deleting one volume must not renumber or rename the
+// rest mid-session.
+const volumeSerials = new Map<string, string>();
+const volumeIds = new Map<string, number>();
+let nextVolumeId = 1;
+
+function demoVolumeIdentity(label: string): { serial: string; id: number } {
+  let serial = volumeSerials.get(label);
+  if (serial === undefined) {
+    serial = `SER-${label.slice(0, 3).toUpperCase()}-${100 + volumeSerials.size + 1}`;
+    volumeSerials.set(label, serial);
+  }
+  const key = `${label}\u0000${serial}`;
+  let id = volumeIds.get(key);
+  if (id === undefined) {
+    id = nextVolumeId++;
+    volumeIds.set(key, id);
+  }
+  return { serial, id };
+}
+
 function volumeSummaries(): VolumeSummary[] {
   const map = new Map<string, VolumeSummary>();
   const order: string[] = [];
   for (const f of files) {
     if (!map.has(f.volume)) {
       order.push(f.volume);
+      const identity = demoVolumeIdentity(f.volume);
       map.set(f.volume, {
+        id: identity.id,
         label: f.volume,
-        serial: `SER-${f.volume.slice(0, 3).toUpperCase()}-${100 + order.length}`,
+        serial: identity.serial,
         indexed_at: NOW - order.length * DAY,
         file_count: 0,
         total_size: 0,
@@ -261,8 +284,11 @@ interface MockArgs {
   volumeSerial?: string | null;
   volume_serial?: string | null;
   volume?: string;
+  volume_id?: number;
+  volumeId?: number;
   parent?: number | null;
   out_path?: string | null;
+  outPath?: string | null;
 }
 
 interface MockLevel {
@@ -381,6 +407,17 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
     }
     case "list_volumes":
       return delay(volumeSummaries() as T);
+    case "delete_volume": {
+      const id = args.volume_id ?? args.volumeId;
+      const volume = volumeSummaries().find((v) => v.id === id);
+      if (volume === undefined) return Promise.reject(new Error("el volumen ya no existe en el catálogo"));
+      for (let i = files.length - 1; i >= 0; i--) {
+        if (files[i].volume === volume.label) files.splice(i, 1);
+      }
+      treeLevels.delete(volume.label);
+      if (lastRun?.volume_label === volume.label) setRun(null);
+      return delay(undefined as T);
+    }
     case "list_duplicates": {
       const groups = new Map<string, DuplicateGroup>();
       for (const f of files) {

@@ -6,12 +6,14 @@ import ReadingStrip from "./components/ReadingStrip";
 import ResultsList from "./components/ResultsList";
 import ScanDialog from "./components/ScanDialog";
 import SearchBar, { SearchHelpButton } from "./components/SearchBar";
+import Splash from "./components/Splash";
 import StatusBar from "./components/StatusBar";
 import TreeView from "./components/TreeView";
 import Toasts from "./components/Toasts";
 import VolumeSidebar from "./components/VolumeSidebar";
 import { LogoMark } from "./components/Brand";
 import { IconDuplicates, IconFolder, IconTable } from "./components/icons";
+import { APP_VERSION } from "./lib/ipc";
 import { useCatalog } from "./stores/catalog";
 import type { SortKey } from "./lib/types";
 
@@ -71,7 +73,9 @@ export default function App() {
           </span>
           <span className="brand-name">
             CD Catalog
-            <span className="brand-sub">Premium</span>
+            <span className="brand-sub">
+              Premium <span className="brand-version">v{APP_VERSION}</span>
+            </span>
           </span>
         </div>
 
@@ -169,6 +173,7 @@ export default function App() {
       <StatusBar />
       <ScanDialog />
       <Toasts />
+      <Splash />
     </div>
   );
 }
