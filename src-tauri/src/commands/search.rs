@@ -162,23 +162,41 @@ pub fn parse_raw_query(raw: &str) -> ParsedQuery {
         min_size,
         max_size,
         volume,
+        volume_serial: None,
     }
 }
 
 #[tauri::command]
-pub fn search(db_path: String, raw: String, limit: i64) -> Result<Vec<core_db::SearchHit>, String> {
+pub fn search(
+    db_path: String,
+    raw: String,
+    limit: i64,
+    volume_label: Option<String>,
+    volume_serial: Option<String>,
+) -> Result<Vec<core_db::SearchHit>, String> {
     let db = Db::open(Path::new(&db_path)).map_err(|e| e.to_string())?;
-    let q = parse_raw_query(&raw);
+    let mut q = parse_raw_query(&raw);
+    if q.volume.is_none() {
+        q.volume = volume_label.filter(|v| !v.trim().is_empty());
+    }
+    q.volume_serial = volume_serial.filter(|v| !v.trim().is_empty());
     if q.fts.is_empty()
         && q.exts.is_empty()
         && q.ext.is_none()
         && q.min_size.is_none()
         && q.max_size.is_none()
         && q.volume.is_none()
+        && q.volume_serial.is_none()
     {
         return Ok(Vec::new());
     }
     db.search(&q, limit).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_hit(db_path: String, file_id: i64) -> Result<Option<core_db::SearchHit>, String> {
+    let db = Db::open(Path::new(&db_path)).map_err(|e| e.to_string())?;
+    db.get_hit(file_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

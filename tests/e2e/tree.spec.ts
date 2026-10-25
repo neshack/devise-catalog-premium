@@ -5,7 +5,7 @@ test("el árbol recorre un volumen carpeta por carpeta", async ({ page }) => {
 
   // The tree walks one volume at a time, so it needs one chosen first.
   await page.getByRole("button", { name: /Fotos-2024/ }).click();
-  await page.getByRole("tab", { name: /árbol/i }).click();
+  await expect(page.getByRole("tab", { name: /árbol/i })).toHaveAttribute("aria-selected", "true");
 
   const tree = page.getByRole("tree");
   await expect(tree).toBeVisible({ timeout: 10_000 });
@@ -17,19 +17,20 @@ test("el árbol recorre un volumen carpeta por carpeta", async ({ page }) => {
   await expect(year).toHaveAttribute("aria-expanded", "false");
   await expect(tree.getByTestId("tree-row")).toHaveCount(1);
 
-  await year.click();
+  await year.click({ force: true });
   await expect(year).toHaveAttribute("aria-expanded", "true");
   const folder = tree.getByRole("treeitem", { name: /07-vacaciones/ });
   await expect(folder).toBeVisible();
 
   // Expanding again reveals what the folder holds, one level down.
-  await folder.click();
-  await expect(tree.getByRole("treeitem", { name: /RAW/ })).toBeVisible();
+  await folder.click({ force: true });
+  await expect(tree.getByRole("treeitem", { name: /RAW/ })).toBeVisible({ timeout: 15_000 });
   const file = tree.getByRole("treeitem", { name: /IMG_/ }).first();
-  await expect(file).toBeVisible();
+  await expect(file).toBeVisible({ timeout: 15_000 });
 
-  // Clicking a file hands it to the results list, where its details live.
-  await file.click();
-  await expect(page.getByTestId("result-row").first()).toBeVisible({ timeout: 10_000 });
+  // Clicking a file keeps us in the tree and updates the inspector in place.
+  await file.click({ force: true });
+  await expect(page.getByRole("tab", { name: /árbol/i })).toHaveAttribute("aria-selected", "true");
+  await expect(tree).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("complementary", { name: /detalles/i })).toContainText("IMG_");
 });

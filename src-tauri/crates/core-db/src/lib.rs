@@ -51,6 +51,7 @@ pub struct ParsedQuery {
     pub min_size: Option<i64>,
     pub max_size: Option<i64>,
     pub volume: Option<String>,
+    pub volume_serial: Option<String>,
 }
 
 #[derive(Debug, PartialEq, serde::Serialize)]
@@ -452,6 +453,10 @@ impl Db {
             sql.push_str(" AND v.label = ?");
             args.push(v.clone().into());
         }
+        if let Some(v) = &q.volume_serial {
+            sql.push_str(" AND v.serial = ?");
+            args.push(v.clone().into());
+        }
         sql.push_str(" LIMIT ?");
         args.push(limit.into());
         let mut stmt = c.prepare(&sql)?;
@@ -473,6 +478,35 @@ impl Db {
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    /// Fetch one indexed row by id with the same shape search returns.
+    pub fn get_hit(&self, file_id: i64) -> Result<Option<SearchHit>> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let sql = format!(
+            "{DIR_PATH_CTE} SELECT f.id, f.name, f.size, v.label, f.ext, f.mtime, \
+             COALESCE(NULLIF(dp.p, ''), '/'), f.blake3, f.audio_json, f.image_json, \
+             f.container_path \
+             FROM files f JOIN volumes v ON v.id = f.volume_id \
+             LEFT JOIN dp ON dp.id = f.dir_id WHERE f.id = ?1 LIMIT 1"
+        );
+        c.query_row(&sql, params![file_id], |r| {
+            Ok(SearchHit {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                size: r.get(2)?,
+                volume_label: r.get(3)?,
+                ext: r.get(4)?,
+                mtime: r.get(5)?,
+                path: r.get(6)?,
+                blake3: r.get(7)?,
+                audio_json: r.get(8)?,
+                image_json: r.get(9)?,
+                container_path: r.get(10)?,
+            })
+        })
+        .optional()
+        .map_err(Into::into)
     }
     pub fn list_duplicates(&self, limit: i64) -> Result<Vec<DuplicateGroup>> {
         let c = self.conn.lock().map_err(|_| lock_err())?;
@@ -687,20 +721,39 @@ impl Db {
     ///
     /// Folder sizes and counts are direct, not recursive: what the tree says
     /// about a folder has to match what expanding it will actually show.
-    pub fn tree_children(&self, volume: &str, parent: Option<i64>) -> Result<TreeChildren> {
+    pub fn tree_children(
+        &self,
+        volume: &str,
+        serial: Option<&str>,
+        parent: Option<i64>,
+    ) -> Result<TreeChildren> {
         let c = self.conn.lock().map_err(|_| lock_err())?;
-        let volume_id: i64 = c
-            .query_row(
-                "SELECT id FROM volumes WHERE label=?1",
-                params![volume],
-                |r| r.get(0),
-            )
-            .map_err(|e| match e {
-                rusqlite::Error::QueryReturnedNoRows => {
-                    anyhow::anyhow!("volumen desconocido: {volume}")
-                }
-                other => other.into(),
-            })?;
+        let volume_id: i64 = match serial {
+            Some(serial) => c
+                .query_row(
+                    "SELECT id FROM volumes WHERE label=?1 AND serial=?2",
+                    params![volume, serial],
+                    |r| r.get(0),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => {
+                        anyhow::anyhow!("volumen desconocido: {volume} ({serial})")
+                    }
+                    other => other.into(),
+                })?,
+            None => c
+                .query_row(
+                    "SELECT id FROM volumes WHERE label=?1",
+                    params![volume],
+                    |r| r.get(0),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => {
+                        anyhow::anyhow!("volumen desconocido: {volume}")
+                    }
+                    other => other.into(),
+                })?,
+        };
 
         // The volume's top level is its root folder, which the scanner writes
         // as the one dir with no parent. Asking for `None` means "start there",

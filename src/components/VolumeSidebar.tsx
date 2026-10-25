@@ -24,6 +24,9 @@ export default function VolumeSidebar() {
     null,
   );
 
+  const isSameVolume = (label: string, serial: string): boolean =>
+    volumeFilter?.label === label && volumeFilter?.serial === serial;
+
   return (
     <aside className="sidebar" aria-label="Volúmenes del catálogo">
       <div className="sidebar__head">
@@ -58,9 +61,15 @@ export default function VolumeSidebar() {
         {volumes.map((v) => (
           <button
             key={`${v.label}\u0000${v.serial}`}
-            className={`side-item${volumeFilter === v.label ? " is-active" : ""}`}
-            onClick={() => setVolumeFilter(volumeFilter === v.label ? null : v.label)}
-            aria-pressed={volumeFilter === v.label}
+            className={`side-item${isSameVolume(v.label, v.serial) ? " is-active" : ""}`}
+            onClick={() =>
+              setVolumeFilter(
+                isSameVolume(v.label, v.serial)
+                  ? null
+                  : { label: v.label, serial: v.serial },
+              )
+            }
+            aria-pressed={isSameVolume(v.label, v.serial)}
             title={`${v.label} — ${v.serial}`}
           >
             <span className="side-item__led" aria-hidden="true" />

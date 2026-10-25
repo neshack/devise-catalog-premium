@@ -95,7 +95,7 @@ interface CatalogState {
   fileDupsLoading: boolean;
 
   view: View;
-  volumeFilter: string | null;
+  volumeFilter: { label: string; serial: string } | null;
   sortKey: SortKey;
   sortDir: SortDir;
 
@@ -116,16 +116,17 @@ interface CatalogState {
   refreshVolumes: () => Promise<void>;
   select: (h: Hit | null) => void;
   setView: (v: View) => void;
-  setVolumeFilter: (label: string | null) => void;
+  setVolumeFilter: (volume: { label: string; serial: string } | null) => void;
   /** Read (or re-read) the top level of the volume the tree is showing. */
   loadTree: () => Promise<void>;
   /** Open a folder, reading it the first time; close it when already open. */
   toggleTreeDir: (key: string, dirId: number) => Promise<void>;
   /**
-   * Show a tree's file in the results list, selected — the inspector reads
-   * from a search hit, and this is how the tree hands it over.
+   * Select a tree file without leaving the tree view.
+   *
+   * The inspector reads `Hit`, so the store resolves the row by id first.
    */
-  revealInResults: (name: string) => Promise<void>;
+  selectTreeFile: (fileId: number) => Promise<void>;
   setSort: (key: SortKey, dir?: SortDir) => void;
   loadDuplicates: () => Promise<void>;
   setScanOpen: (open: boolean) => void;
@@ -160,7 +161,7 @@ export const useCatalog = create<CatalogState>((set, get) => ({
   fileDups: [],
   fileDupsLoading: false,
 
-  view: "results",
+  view: "tree",
   volumeFilter: null,
   sortKey: "name",
   sortDir: "asc",
@@ -209,7 +210,7 @@ export const useCatalog = create<CatalogState>((set, get) => ({
 
   runSearch: async () => {
     const { query, volumeFilter } = get();
-    const effective = volumeFilter ? `${query} volume:"${volumeFilter}"`.trim() : query.trim();
+    const effective = volumeFilter ? `${query} volume:"${volumeFilter.label}"`.trim() : query.trim();
     if (effective === "") {
       set({ hits: [], searchedFor: "", searchStatus: "idle", elapsedMs: null, selected: null });
       return;
@@ -217,7 +218,12 @@ export const useCatalog = create<CatalogState>((set, get) => ({
     set({ searchStatus: "searching" });
     const t0 = performance.now();
     try {
-      const rows = await call<Hit[]>("search", { dbPath: get().dbPath, raw: effective, limit: 200 });
+      const rows = await call<Hit[]>("search", {
+        dbPath: get().dbPath,
+        raw: effective,
+        limit: 200,
+        volume_serial: volumeFilter?.serial ?? null,
+      });
       const elapsed = performance.now() - t0;
       // Ignore stale responses after rapid edits.
       if (get().query !== query || get().volumeFilter !== volumeFilter) return;
@@ -262,7 +268,10 @@ export const useCatalog = create<CatalogState>((set, get) => ({
   setVolumeFilter: (volumeFilter) => {
     // Levels read from another volume would be wrong here: a folder id only
     // means something inside its own tree.
-    if (volumeFilter !== get().volumeFilter) set({ volumeFilter, tree: EMPTY_TREE });
+    const prev = get().volumeFilter;
+    const changed =
+      prev?.label !== volumeFilter?.label || prev?.serial !== volumeFilter?.serial;
+    if (changed) set({ volumeFilter, tree: EMPTY_TREE, view: "tree" });
   },
 
   loadTree: async () => {
@@ -275,7 +284,8 @@ export const useCatalog = create<CatalogState>((set, get) => ({
     try {
       const children = await call<TreeChildren>("tree_children", {
         dbPath: get().dbPath,
-        volume,
+        volume: volume.label,
+        serial: volume.serial,
         parent: null,
       });
       set({ tree: { loading: null, children: { [TREE_ROOT]: children }, expanded: [], error: null } });
@@ -300,7 +310,8 @@ export const useCatalog = create<CatalogState>((set, get) => ({
     try {
       const children = await call<TreeChildren>("tree_children", {
         dbPath: get().dbPath,
-        volume: volumeFilter,
+        volume: volumeFilter.label,
+        serial: volumeFilter.serial,
         parent: dirId,
       });
       set((s) => ({
@@ -409,14 +420,13 @@ export const useCatalog = create<CatalogState>((set, get) => ({
     }
   },
 
-  revealInResults: async (name) => {
-    set({ query: name, view: "results" });
-    await get().runSearch();
-    const hits = get().hits;
-    // The tree knows the name, the inspector needs the row: the search is what
-    // turns one into the other, and it keeps the volume filter in force.
-    const exact = hits.find((h) => h.name === name) ?? hits[0];
-    if (exact !== undefined) get().select(exact);
+  selectTreeFile: async (fileId) => {
+    try {
+      const hit = await call<Hit | null>("get_hit", { dbPath: get().dbPath, file_id: fileId });
+      if (hit !== null) get().select(hit);
+    } catch (e) {
+      get().pushToast("error", `No se pudo abrir el archivo seleccionado: ${String(e)}`);
+    }
   },
 
   runExport: async (fmt) => {

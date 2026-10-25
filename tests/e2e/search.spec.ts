@@ -1,7 +1,14 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+async function openResults(page: Page) {
+  const tab = page.getByRole("tab", { name: /resultados/i });
+  await tab.click({ force: true });
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+}
 
 test("buscar *.mp3 muestra resultados en modo demo", async ({ page }) => {
   await page.goto("http://localhost:1420");
+  await openResults(page);
   await page.getByRole("textbox", { name: "Buscar en el catálogo" }).fill("*.mp3");
   await expect(page.getByTestId("result-row").first()).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText("CD Catalog", { exact: false }).first()).toBeVisible();
@@ -12,9 +19,11 @@ test("buscar *.mp3 muestra resultados en modo demo", async ({ page }) => {
 
 test("la barra lateral lista volúmenes y filtra al hacer clic", async ({ page }) => {
   await page.goto("http://localhost:1420");
+  await openResults(page);
   const sidebar = page.getByRole("complementary", { name: /volúmenes/i });
   await expect(sidebar.getByText("Música-90s")).toBeVisible();
   await sidebar.getByText("Música-90s").click();
+  await openResults(page);
   await page.getByRole("textbox", { name: "Buscar en el catálogo" }).fill("*.flac");
   await expect(page.getByTestId("result-row").first()).toBeVisible({ timeout: 10_000 });
 });
@@ -32,6 +41,7 @@ test("el diálogo de escaneo valida los campos", async ({ page }) => {
 
 test("el inspector muestra detalles al seleccionar un resultado", async ({ page }) => {
   await page.goto("http://localhost:1420");
+  await openResults(page);
   await page.getByRole("textbox", { name: "Buscar en el catálogo" }).fill("informe-anual");
   const row = page.getByTestId("result-row").first();
   await expect(row).toBeVisible({ timeout: 10_000 });
@@ -41,6 +51,7 @@ test("el inspector muestra detalles al seleccionar un resultado", async ({ page 
 
 test("el inspector muestra los metadatos guardados por el escáner", async ({ page }) => {
   await page.goto("http://localhost:1420");
+  await openResults(page);
   const search = page.getByRole("textbox", { name: "Buscar en el catálogo" });
 
   // Audio: ID3 fields land in the panel.
@@ -66,6 +77,7 @@ test("el inspector muestra los metadatos guardados por el escáner", async ({ pa
 
 test("el inspector muestra los archivos dentro de un ZIP sin extraerlos", async ({ page }) => {
   await page.goto("http://localhost:1420");
+  await openResults(page);
   await page.getByRole("textbox", { name: "Buscar en el catálogo" }).fill("IMG_9001");
 
   // The row says where the entry lives instead of pretending it is a folder.

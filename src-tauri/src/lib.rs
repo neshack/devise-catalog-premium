@@ -21,6 +21,7 @@ pub fn run() {
             commands::scan::recover_stale_scans,
             commands::tree::tree_children,
             commands::search::search,
+            commands::search::get_hit,
             commands::search::list_duplicates,
             commands::search::get_volume,
             commands::search::list_volumes,

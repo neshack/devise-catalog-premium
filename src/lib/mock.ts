@@ -254,9 +254,12 @@ interface MockArgs {
   raw?: string;
   limit?: number;
   file_id?: number;
+  fileId?: number;
   root?: string;
   label?: string;
   serial?: string;
+  volumeSerial?: string | null;
+  volume_serial?: string | null;
   volume?: string;
   parent?: number | null;
   out_path?: string | null;
@@ -356,6 +359,7 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
 
   switch (cmd) {
     case "search": {
+      const byLabel = new Map(volumeSummaries().map((v) => [v.label, v.serial]));
       const rows = files.filter((f) => {
         if (terms.length > 0 && !terms.every((t) => f.name.toLowerCase().includes(t))) return false;
         if (exts.length > 0 && !(f.ext && exts.includes(f.ext.toLowerCase()))) return false;
@@ -367,6 +371,10 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
           if (op === "=" && f.size !== v) return false;
         }
         if (volume && f.volume !== volume) return false;
+        const serialFilter = args.volume_serial ?? args.volumeSerial;
+        if (serialFilter !== null && serialFilter !== undefined) {
+          if ((byLabel.get(f.volume) ?? null) !== serialFilter) return false;
+        }
         return terms.length > 0 || exts.length > 0 || sizes.length > 0 || volume !== null;
       });
       return delay(rows.slice(0, args.limit ?? 200).map(toHit) as T);
@@ -396,6 +404,11 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
               .map((x) => ({ id: x.id, name: x.name, size: x.size, volume_label: x.volume, path: x.path }))
           : [];
       return delay(rows as T);
+    }
+    case "get_hit": {
+      const id = args.file_id ?? args.fileId;
+      const row = id === undefined ? null : files.find((x) => x.id === id) ?? null;
+      return delay((row ? toHit(row) : null) as T);
     }
     case "export_csv":
     case "export_json":

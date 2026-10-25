@@ -72,6 +72,7 @@ impl Catalog {
                     min_size: None,
                     max_size: None,
                     volume: None,
+                    volume_serial: None,
                 },
                 100,
             )
@@ -303,7 +304,9 @@ fn tree_walks_one_level_at_a_time_with_direct_counts() {
     c.entry(vol, fotos, "dentro.zip/notas.txt", 50, "dentro.zip");
 
     // The root knows about its folder and its file, not about what is deeper.
-    let root_children = c.db.tree_children("Fotos-2024", None).unwrap();
+    let root_children =
+        c.db.tree_children("Fotos-2024", Some("SER-1"), None)
+            .unwrap();
     assert_eq!(root_children.dirs_total, 1);
     assert_eq!(root_children.files_total, 1);
     assert_eq!(root_children.dirs.len(), 1);
@@ -316,7 +319,9 @@ fn tree_walks_one_level_at_a_time_with_direct_counts() {
 
     // Inside the folder: its files first-class, the subfolder counted but not
     // descended into.
-    let fotos_children = c.db.tree_children("Fotos-2024", Some(fotos)).unwrap();
+    let fotos_children =
+        c.db.tree_children("Fotos-2024", Some("SER-1"), Some(fotos))
+            .unwrap();
     assert_eq!(fotos_children.files_total, 3);
     let names: Vec<&str> = fotos_children
         .files
@@ -337,5 +342,5 @@ fn tree_walks_one_level_at_a_time_with_direct_counts() {
 
     // An unknown volume is an error, not an empty tree: saying "nothing here"
     // about a disk that was never indexed would be a lie.
-    assert!(c.db.tree_children("No-Existe", None).is_err());
+    assert!(c.db.tree_children("No-Existe", None, None).is_err());
 }

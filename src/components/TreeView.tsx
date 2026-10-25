@@ -16,7 +16,7 @@ const ROW_HEIGHT = 30;
  * volume with a million files costs one level, not a million rows.
  */
 export default function TreeView() {
-  const { volumeFilter, tree, loadTree, toggleTreeDir, selected, revealInResults } = useCatalog();
+  const { volumeFilter, tree, loadTree, toggleTreeDir, selected, selectTreeFile } = useCatalog();
   const scrollRef = useRef<HTMLDivElement>(null);
   const rows = useMemo(() => flattenTree(tree.children, tree.expanded), [tree.children, tree.expanded]);
 
@@ -56,7 +56,7 @@ export default function TreeView() {
     return (
       <div className="empty">
         <IconSpinner size={22} />
-        <span className="empty__hint">Leyendo la estructura de «{volumeFilter}»…</span>
+        <span className="empty__hint">Leyendo la estructura de «{volumeFilter.label}»…</span>
       </div>
     );
   }
@@ -65,7 +65,7 @@ export default function TreeView() {
     return (
       <EmptyState
         icon={<IconFolder size={26} />}
-        title={`«${volumeFilter}» no tiene archivos indexados`}
+        title={`«${volumeFilter.label}» no tiene archivos indexados`}
         hint="El volumen está en el catálogo pero su estructura quedó vacía: vuelve a escanearlo para llenarla."
       />
     );
@@ -79,13 +79,18 @@ export default function TreeView() {
       <div className="results-span">
         <span className="results-span__label">Volumen</span>
         <span className="results-span__words">
-          <b>{volumeFilter}</b> · {formatCount(root.dirs_total)}{" "}
+          <b>{volumeFilter.label}</b> · {formatCount(root.dirs_total)}{" "}
           {root.dirs_total === 1 ? "carpeta" : "carpetas"} · {formatCount(root.files_total)}{" "}
           {root.files_total === 1 ? "archivo" : "archivos"} en la raíz
         </span>
       </div>
 
-      <div className="results-scroll" ref={scrollRef} role="tree" aria-label={`Carpetas de ${volumeFilter}`}>
+      <div
+        className="results-scroll"
+        ref={scrollRef}
+        role="tree"
+        aria-label={`Carpetas de ${volumeFilter.label}`}
+      >
         <div style={{ height: virt.getTotalSize(), position: "relative" }}>
           {items.map((vi) => {
             const row = rows[vi.index];
@@ -151,7 +156,7 @@ export default function TreeView() {
                   paddingLeft: 16 + row.depth * 16,
                 }}
                 title={file.container_path === null ? file.name : `${file.container_path}/${file.name}`}
-                onClick={() => void revealInResults(file.name)}
+                onClick={() => void selectTreeFile(file.id)}
               >
                 <span className="tree-row__mark" aria-hidden="true" />
                 <span className="tree-row__name">

@@ -93,12 +93,12 @@ export default function App() {
           <div className="results-toolbar">
             <div className="segmented" role="tablist" aria-label="Vista principal">
               <button
-                className={`segmented__btn${view === "results" ? " is-active" : ""}`}
+                className={`segmented__btn${view === "tree" ? " is-active" : ""}`}
                 role="tab"
-                aria-selected={view === "results"}
-                onClick={() => setView("results")}
+                aria-selected={view === "tree"}
+                onClick={() => setView("tree")}
               >
-                <IconTable size={14} /> Resultados
+                <IconFolder size={14} /> Árbol
               </button>
               <button
                 className={`segmented__btn${view === "duplicates" ? " is-active" : ""}`}
@@ -109,12 +109,12 @@ export default function App() {
                 <IconDuplicates size={14} /> Duplicados
               </button>
               <button
-                className={`segmented__btn${view === "tree" ? " is-active" : ""}`}
+                className={`segmented__btn${view === "results" ? " is-active" : ""}`}
                 role="tab"
-                aria-selected={view === "tree"}
-                onClick={() => setView("tree")}
+                aria-selected={view === "results"}
+                onClick={() => setView("results")}
               >
-                <IconFolder size={14} /> Árbol
+                <IconTable size={14} /> Resultados
               </button>
             </div>
 
@@ -128,7 +128,9 @@ export default function App() {
                 {searchStatus !== "searching" && elapsedMs !== null && (
                   <span className="results-elapsed">· {elapsedMs.toFixed(0)} ms</span>
                 )}
-                {volumeFilter !== null && <span className="results-elapsed">· en «{volumeFilter}»</span>}
+                {volumeFilter !== null && (
+                  <span className="results-elapsed">· en «{volumeFilter.label}» · {volumeFilter.serial}</span>
+                )}
               </div>
             )}
 

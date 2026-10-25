@@ -29,6 +29,7 @@ fn bench_search(c: &mut Criterion) {
                         min_size: None,
                         max_size: None,
                         volume: None,
+                        volume_serial: None,
                     },
                     50,
                 )

@@ -43,6 +43,7 @@ fn insert_and_search_by_ext() {
                 min_size: None,
                 max_size: None,
                 volume: None,
+                volume_serial: None,
             },
             50,
         )
