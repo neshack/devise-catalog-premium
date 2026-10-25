@@ -23,7 +23,11 @@ cuentas, sin telemetría, sin red en tiempo de ejecución.
 - Árbol como vista principal: un volumen a la vez, un nivel por consulta.
 - Entradas de ZIP indexadas sin extraer.
 - Duplicados por hash BLAKE3 entre volúmenes.
-- Inspector con ruta, tamaño, fecha, hash, ID3 y EXIF.
+- Etiquetas en archivos y carpetas, buscables con `#tag` o `tag:tag`; una
+  etiqueta de carpeta alcanza todo su contenido.
+- **Ubicar en el árbol** desde el menú contextual de cualquier resultado.
+- Inspector con ruta completa, tamaño, fecha, hash, ID3 y EXIF; las rutas de
+  las copias también se ven completas.
 - Escaneos que se pausan, se reanudan y sobreviven a un cierre o suspensión.
 - Eliminación segura de volúmenes: hay que escribir la etiqueta; el disco no se toca.
 - Exportación a CSV, JSON y HTML.
@@ -104,6 +108,8 @@ Si el AppImage falla dentro de `linuxdeploy` por `.relr.dyn`, usa
 informe size:>5MB
 ext:{mp3,flac} size:<10MB
 volume:"Backup-12"
+tag:playa
+#familia
 Beatles
 ```
 
@@ -113,7 +119,7 @@ La interfaz está en español; el código, los comentarios y los commits en ingl
 
 ```text
 src-tauri/
-  src/commands/{scan,search,tree,export,system}.rs
+  src/commands/{scan,search,tree,tags,export,system}.rs
   crates/core-db       SQLite WAL + FTS5, upsert diferencial, consultas de árbol
   crates/core-scanner  recorrido jwalk cancelable con progreso y errores
   crates/core-hash     BLAKE3 parcial/completo

@@ -63,11 +63,13 @@ export default function App() {
 
   useEffect(() => initTheme(), [initTheme]);
 
-  // Debounced live search as the query or the volume filter changes.
+  // Debounced live search as the query changes. A volume click with an active
+  // query triggers its own re-search from the store, so "show in tree" can
+  // change the volume without a pending search dragging the user back.
   useEffect(() => {
     const t = setTimeout(() => void runSearch(), 180);
     return () => clearTimeout(t);
-  }, [query, volumeFilter, runSearch]);
+  }, [query, runSearch]);
 
   return (
     <div className="app">

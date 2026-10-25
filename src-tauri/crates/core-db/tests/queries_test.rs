@@ -73,6 +73,7 @@ impl Catalog {
                     max_size: None,
                     volume: None,
                     volume_serial: None,
+                    tags: Vec::new(),
                 },
                 100,
             )
@@ -354,6 +355,9 @@ fn deleting_a_volume_removes_only_its_catalog_rows() {
     let gone_dir = c.dir(gone, None, "/", "h-gone");
     c.file(keep, keep_dir, "keep.txt", 10, Some("keep-hash"));
     c.file(gone, gone_dir, "gone.txt", 20, Some("gone-hash"));
+    c.db.add_file_tag(c.id_of("gone.txt"), "temporal").unwrap();
+    c.db.add_dir_tag(gone_dir, "temporal").unwrap();
+    assert_eq!(c.db.list_tags().unwrap(), vec!["temporal"]);
     c.db.replace_scan_errors(gone, &[("/media/gone/roto".into(), "sin permiso".into())])
         .unwrap();
     c.db.start_scan_run(gone, "/media/gone", "walk").unwrap();
@@ -367,6 +371,10 @@ fn deleting_a_volume_removes_only_its_catalog_rows() {
     assert!(c.db.dirs_for_volume(gone).unwrap().is_empty());
     assert!(c.db.scan_errors(gone).unwrap().is_empty());
     assert!(c.db.latest_scan_run().unwrap().is_none());
+    assert!(
+        c.db.list_tags().unwrap().is_empty(),
+        "a tag with no links left must not survive the volume"
+    );
 
     // …and the other volume is untouched.
     assert_eq!(c.hits("").len(), 1);
@@ -394,6 +402,7 @@ fn search_can_disambiguate_two_volumes_with_the_same_label() {
         max_size: None,
         volume: Some("Backup".into()),
         volume_serial: Some(serial.into()),
+        tags: Vec::new(),
     };
 
     let hits = c.db.search(&q("SER-B"), 100).unwrap();
@@ -418,4 +427,74 @@ fn get_hit_returns_one_indexed_row_by_id() {
     assert_eq!(hit.size, 4_000);
 
     assert!(c.db.get_hit(id + 999).unwrap().is_none());
+}
+
+#[test]
+fn tags_on_files_and_folders_drive_search_and_the_tree() {
+    let c = Catalog::new();
+    let volume = c.volume("Fotos", "SER-1");
+    let root = c.dir(volume, None, "/", "h-root");
+    let trip = c.dir(volume, Some(root), "2024", "h-trip");
+    let beach = c.dir(volume, Some(trip), "playa", "h-beach");
+    c.file(volume, beach, "IMG_0001.jpg", 10, None);
+    c.file(volume, root, "notas.txt", 5, None);
+
+    let photo = c.id_of("IMG_0001.jpg");
+    assert_eq!(c.db.add_file_tag(photo, "playa").unwrap(), vec!["playa"]);
+    assert_eq!(c.db.add_file_tag(photo, "PLAYA").unwrap(), vec!["playa"]);
+    assert_eq!(c.db.add_dir_tag(trip, "viaje").unwrap(), vec!["viaje"]);
+
+    // A direct tag finds the file; a folder tag is inherited by its subtree.
+    let q = |tags: Vec<&str>| ParsedQuery {
+        fts: String::new(),
+        ext: None,
+        exts: Vec::new(),
+        min_size: None,
+        max_size: None,
+        volume: None,
+        volume_serial: None,
+        tags: tags.into_iter().map(str::to_string).collect(),
+    };
+    assert_eq!(c.db.search(&q(vec!["playa"]), 100).unwrap().len(), 1);
+    assert_eq!(c.db.search(&q(vec!["viaje"]), 100).unwrap().len(), 1);
+    assert_eq!(
+        c.db.search(&q(vec!["playa", "viaje"]), 100).unwrap()[0].name,
+        "IMG_0001.jpg"
+    );
+    assert!(c.db.search(&q(vec!["no-existe"]), 100).unwrap().is_empty());
+
+    // The tree shows the tags where they live, not duplicated down the subtree.
+    let root_children =
+        c.db.tree_children("Fotos", Some("SER-1"), Some(root))
+            .unwrap();
+    assert_eq!(root_children.dirs[0].tags, vec!["viaje"]);
+    let beach_children =
+        c.db.tree_children("Fotos", Some("SER-1"), Some(beach))
+            .unwrap();
+    assert_eq!(beach_children.files[0].tags, vec!["playa"]);
+
+    assert_eq!(
+        c.db.remove_file_tag(photo, "playa").unwrap(),
+        Vec::<String>::new()
+    );
+    assert!(c.db.search(&q(vec!["playa"]), 100).unwrap().is_empty());
+}
+
+#[test]
+fn tree_path_walks_from_the_root_to_the_file_folder() {
+    let c = Catalog::new();
+    let volume = c.volume("Fotos", "SER-1");
+    let root = c.dir(volume, None, "/", "h-root");
+    let year = c.dir(volume, Some(root), "2024", "h-year");
+    let trip = c.dir(volume, Some(year), "playa", "h-trip");
+    c.file(volume, trip, "IMG_0001.jpg", 10, None);
+
+    let id = c.id_of("IMG_0001.jpg");
+    let path = c.db.tree_path(id).unwrap().expect("tree path");
+    assert_eq!(path.volume_label, "Fotos");
+    assert_eq!(path.volume_serial, "SER-1");
+    assert_eq!(path.dir_ids, vec![root, year, trip]);
+    assert_eq!(path.file_id, id);
+
+    assert!(c.db.tree_path(id + 999).unwrap().is_none());
 }

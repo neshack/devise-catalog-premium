@@ -48,8 +48,8 @@ future work.
 ## 5. Release
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
 The `release` workflow builds `.rpm`, `.deb`, `.AppImage`, `.msi`/`.exe` and

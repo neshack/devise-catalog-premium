@@ -10,6 +10,8 @@ const SYNTAX_ROWS: Array<[string, string]> = [
   ["ext:{mp3,flac}", "varias extensiones a la vez"],
   ["size:>5MB", "tamaño mínimo (también < >= <= =)"],
   ['volume:"Backup-12"', "limitar a un volumen"],
+  ["tag:playa", "etiqueta de archivo o carpeta"],
+  ["#familia", "atajo de tag:familia"],
 ];
 
 export function SyntaxHelp(): JSX.Element {
@@ -100,7 +102,7 @@ export default function SearchBar() {
         className="searchbar__input"
         type="text"
         aria-label="Buscar en el catálogo"
-        placeholder='Beatles  ·  *.mp3  ·  size:>5MB  ·  volume:"Backup-12"'
+        placeholder='Beatles  ·  *.mp3  ·  size:>5MB  ·  #vacaciones'
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {

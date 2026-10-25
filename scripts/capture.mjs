@@ -101,6 +101,44 @@ await page.reload();
 await page.waitForTimeout(1200);
 await shot("11-scan-interrupted");
 
+// context menu: a result can go back to its exact place in the tree
+await page.getByRole("textbox", { name: "Buscar en el catálogo" }).fill("IMG_4412");
+await page.waitForTimeout(700);
+await page.getByTestId("result-row").first().click({ button: "right" });
+await page.waitForTimeout(250);
+await shot("18-context-menu");
+await page.getByRole("menuitem", { name: /ubicar en el árbol/i }).click();
+await page.waitForTimeout(800);
+await shot("19-tree-reveal");
+
+// tags on a file, then on a folder
+await page.getByRole("button", { name: /todos los volúmenes/i }).click();
+await page.waitForTimeout(500);
+await page.getByRole("textbox", { name: "Buscar en el catálogo" }).fill("informe-anual");
+await page.waitForTimeout(700);
+await page.getByTestId("result-row").first().click();
+await page.waitForTimeout(500);
+const tagInput = page
+  .getByRole("complementary", { name: /detalles del archivo/i })
+  .getByLabel("Nueva etiqueta");
+await tagInput.fill("importante");
+await tagInput.press("Enter");
+await page.waitForTimeout(500);
+await shot("20-file-tags");
+
+await page.getByRole("button", { name: "Limpiar búsqueda" }).click();
+await page.getByRole("complementary", { name: /volúmenes/i }).getByText("Fotos-2024").click();
+await page.waitForTimeout(700);
+await page.getByTestId("tree-row").filter({ hasText: "2024" }).first().click();
+await page.waitForTimeout(500);
+await page.getByTestId("tree-row").filter({ hasText: "video" }).first().click({ button: "right" });
+await page.waitForTimeout(250);
+await page.getByRole("menuitem", { name: /etiquetar carpeta/i }).click();
+await page.waitForTimeout(500);
+await shot("21-folder-tags");
+await page.keyboard.press("Escape");
+await page.waitForTimeout(300);
+
 // theme menu and the light theme over the same catalog
 await page.getByRole("button", { name: /tema:/i }).click();
 await page.waitForTimeout(250);
@@ -110,6 +148,8 @@ await page.waitForTimeout(600);
 await shot("14-light");
 
 // light theme with a real tree selection: contrast is only proven on content
+await page.getByRole("button", { name: /todos los volúmenes/i }).click();
+await page.waitForTimeout(300);
 await page.getByRole("complementary", { name: /volúmenes/i }).getByText("Fotos-2024").click();
 await page.waitForTimeout(700);
 await page.getByTestId("tree-row").first().click();

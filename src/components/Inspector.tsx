@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { fileKind, formatBytes, formatDate, formatHash, hitFullPath } from "../lib/format";
+import { call } from "../lib/ipc";
 import type { Hit } from "../lib/types";
 import {
   describeAudioMeta,
@@ -9,7 +10,16 @@ import {
   type MetaRow,
 } from "../lib/media";
 import { useCatalog } from "../stores/catalog";
-import { IconCheck, IconCopy, IconDuplicates, IconFile, IconSpinner, KindIcon } from "./icons";
+import TagEditor from "./TagEditor";
+import {
+  IconCheck,
+  IconCopy,
+  IconDuplicates,
+  IconFile,
+  IconFolder,
+  IconSpinner,
+  KindIcon,
+} from "./icons";
 
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
@@ -29,6 +39,65 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
+/** File tags, loaded per selection and mirrored into an open tree row. */
+function FileTags({ fileId }: { fileId: number }) {
+  const { dbPath, pushToast, updateTreeTags } = useCatalog();
+  const [tags, setTags] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setBusy(true);
+    void Promise.all([
+      call<string[]>("file_tags", { dbPath, fileId }),
+      call<string[]>("list_tags", { dbPath }),
+    ])
+      .then(([current, all]) => {
+        if (!alive) return;
+        setTags(current);
+        setSuggestions(all);
+      })
+      .catch((e) => {
+        if (alive) pushToast("error", `No se pudieron leer las etiquetas: ${String(e)}`);
+      })
+      .finally(() => {
+        if (alive) setBusy(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [dbPath, fileId, pushToast]);
+
+  const apply = async (command: string, name: string) => {
+    setBusy(true);
+    try {
+      const next = await call<string[]>(command, { dbPath, fileId, name });
+      setTags(next);
+      updateTreeTags({ kind: "file", id: fileId }, next);
+      setSuggestions((prev) =>
+        prev.includes(name)
+          ? prev
+          : [...prev, name].sort((a, b) => a.localeCompare(b, "es")),
+      );
+    } catch (e) {
+      pushToast("error", `No se pudo guardar la etiqueta: ${String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <TagEditor
+      tags={tags}
+      suggestions={suggestions}
+      disabled={busy}
+      onAdd={(name) => apply("add_file_tag", name)}
+      onRemove={(name) => apply("remove_file_tag", name)}
+    />
+  );
+}
+
 /** Why the duplicates panel has nothing to show. */
 function noCopiesReason(hit: Hit): string {
   if (hit.container_path !== null) {
@@ -43,7 +112,7 @@ function noCopiesReason(hit: Hit): string {
 }
 
 export default function Inspector() {
-  const { selected, fileDups, fileDupsLoading } = useCatalog();
+  const { selected, fileDups, fileDupsLoading, revealInTree } = useCatalog();
 
   if (selected === null) {
     return (
@@ -92,11 +161,23 @@ export default function Inspector() {
             <span className="field__key">Volumen</span>
             <span className="field__value">{selected.volume_label}</span>
           </div>
-          <div className="field">
-            <span className="field__key">Ruta</span>
-            <span className="field__value field__value--mono field__value--wrap hash-row">
-              <code>{selected.path}</code>
+          <div className="field field--path">
+            <span className="field__key">Ruta completa</span>
+            <span
+              className="field__value field__value--mono field__value--wrap hash-row"
+              title={fullPath}
+            >
+              <code>{fullPath}</code>
               <CopyButton text={fullPath} label="Copiar ruta completa" />
+            </span>
+          </div>
+          <div className="field">
+            <span className="field__key">Árbol</span>
+            <span className="field__value">
+              <button className="btn btn--sm" onClick={() => void revealInTree(selected.id)}>
+                <IconFolder size={13} />
+                Ubicar en el árbol
+              </button>
             </span>
           </div>
           {selected.container_path !== null && (
@@ -132,6 +213,14 @@ export default function Inspector() {
         </div>
       </div>
 
+      <div className="inspector__section">
+        <span className="inspector__title">Etiquetas</span>
+        <FileTags fileId={selected.id} />
+        <p className="form-field__help">
+          Las etiquetas de una carpeta también alcanzan todo su contenido al buscar.
+        </p>
+      </div>
+
       {metaRows.length > 0 && (
         <div className="inspector__section">
           <span className="inspector__title">Metadatos</span>
@@ -160,12 +249,17 @@ export default function Inspector() {
           <>
             <div className="field-list">
               {fileDups.map((d) => (
-                <div key={d.id} className="field" title={`${d.path}/${d.name} (${d.volume_label})`}>
+                <div
+                  key={d.id}
+                  className="field field--path"
+                  title={`${d.path}/${d.name} (${d.volume_label})`}
+                >
                   <span className="field__key">
                     <IconDuplicates size={12} /> {d.volume_label}
                   </span>
-                  <span className="field__value field__value--mono field__value--truncate">
-                    {d.path === "/" ? `/${d.name}` : `${d.path}/${d.name}`} · {formatBytes(d.size)}
+                  <span className="field__value field__value--mono field__value--wrap">
+                    <code>{d.path === "/" ? `/${d.name}` : `${d.path}/${d.name}`}</code> ·{" "}
+                    {formatBytes(d.size)}
                   </span>
                 </div>
               ))}

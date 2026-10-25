@@ -66,13 +66,16 @@ Confirmed: volume scan with differential re-scan; full-text search with filters
 level per query; duplicate groups by BLAKE3; inspector with audio/image
 metadata and "inside <archive>" provenance; ZIP contents indexed without
 extracting them; exports (CSV, JSON, HTML); a .cdc catalog file; demo mode with
-seeded data; light, dark and system themes with persisted preference.
+seeded data; light, dark and system themes with persisted preference; tags on
+files and folders with inherited search; "locate in tree" from results; full
+paths in the inspector and duplicate list.
 
 Scan attempts persist in `scan_runs` with a heartbeat, so a suspended or killed
 process can be resumed. Pausing parks the walk without busy-waiting. Unreadable
-paths are written to `scan_errors`. Removing a volume requires typing its label
-and never touches the disk; the old `com.cdcatalog.premium` catalog is copied
-into the new `com.devise.catalog` data directory on first launch.
+paths are written to `scan_errors`. Removing a volume requires typing its label,
+never touches the disk, and runs off the main thread so a large cascade cannot
+freeze the window; the old `com.cdcatalog.premium` catalog is copied into the
+new `com.devise.catalog` data directory on first launch.
 
 Terminology in play: volumen, escaneo, catálogo, entrada (fila dentro de un
 contenedor), contenedor, duplicados, ficha.

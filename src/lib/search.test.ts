@@ -7,4 +7,10 @@ describe("parseSearchQuery", () => {
     expect(q.min_size).toBe(5 * 1024 * 1024);
     expect(q.fts).toContain("mp3");
   });
+
+  it("tags do not become free-text terms", () => {
+    const q = parseSearchQuery("tag:playa #familia");
+    expect(q.tags).toEqual(["playa", "familia"]);
+    expect(q.fts).toBe("*");
+  });
 });

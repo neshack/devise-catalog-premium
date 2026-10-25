@@ -1427,6 +1427,18 @@ p {
   border-bottom: 0;
 }
 
+/* A path gets the whole panel width: a 96 px key column would force a long
+   path to break after two characters. */
+.field--path {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  align-items: start;
+}
+
+.field--path .field__value {
+  width: 100%;
+}
+
 .field__key {
   font-size: var(--legend-size);
   font-weight: 700;
@@ -1474,6 +1486,21 @@ p {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A full path is a fact, not a preview: when the field asks for wrapping,
+   the copy button may sit beside it but the path itself never ellipsizes. */
+.field__value--wrap.hash-row {
+  align-items: flex-start;
+}
+
+.field__value--wrap.hash-row code {
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
 }
 
 /* ---------- duplicados ---------- */
@@ -2020,6 +2047,123 @@ p {
   }
 }
 
+/* ---------- etiquetas ---------- */
+
+.tag-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 20px;
+}
+
+.tag-editor__empty {
+  font-size: 11.5px;
+  color: var(--fg-faint);
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 4px 0 7px;
+  border: 1px solid var(--accent-border);
+  border-radius: 2px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.tag-chip__remove {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 2px;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.tag-chip__remove:hover {
+  opacity: 1;
+  background: var(--accent-soft-strong);
+}
+
+.tag-form {
+  display: flex;
+  gap: 6px;
+}
+
+.tag-form .input {
+  height: 28px;
+  font-size: 11.5px;
+}
+
+.modal--tags {
+  border-color: var(--accent-border);
+}
+
+.modal--tags .modal__head {
+  background: var(--accent-soft);
+  border-bottom-color: var(--accent-border);
+}
+
+.modal--tags .modal__head > svg {
+  color: var(--accent);
+}
+
+/* ---------- menú contextual ---------- */
+
+.context-menu {
+  position: fixed;
+  z-index: 300;
+  min-width: 220px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-2);
+  animation: pop-in 120ms var(--ease-out);
+}
+
+.context-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: var(--radius-s);
+  font-size: 12.5px;
+  text-align: left;
+  color: var(--fg);
+  transition: background var(--dur) var(--ease);
+}
+
+.context-menu__item:hover,
+.context-menu__item:focus-visible {
+  background: var(--surface-3);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.context-menu__item--danger {
+  color: var(--danger);
+}
+
+.context-menu__icon {
+  display: grid;
+  place-items: center;
+  color: var(--fg-muted);
+}
+
 /* ---------- menús ---------- */
 
 .menu-anchor {
@@ -2357,6 +2501,12 @@ p {
   font-family: var(--font-mono);
   font-size: 9.5px;
   color: var(--fg-faint);
+}
+
+.tree-row__tag--tag {
+  color: var(--accent);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
 }
 
 .tree-row__count,

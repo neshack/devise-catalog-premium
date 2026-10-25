@@ -30,6 +30,7 @@ fn bench_search(c: &mut Criterion) {
                         max_size: None,
                         volume: None,
                         volume_serial: None,
+                        tags: Vec::new(),
                     },
                     50,
                 )

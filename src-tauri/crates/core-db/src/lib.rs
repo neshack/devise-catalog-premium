@@ -1,5 +1,6 @@
 use anyhow::Result;
 use rusqlite::{params, Connection, OptionalExtension};
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 pub struct Db {
@@ -55,6 +56,9 @@ pub struct ParsedQuery {
     pub max_size: Option<i64>,
     pub volume: Option<String>,
     pub volume_serial: Option<String>,
+    /// Every tag must match, either directly on the file or inherited from a
+    /// tagged folder above it.
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, serde::Serialize)]
@@ -210,6 +214,8 @@ pub struct TreeDir {
     pub dirs: i64,
     /// Bytes of the files directly inside it.
     pub size: i64,
+    /// Tags attached directly to this folder.
+    pub tags: Vec<String>,
 }
 
 /// A file as the tree shows it.
@@ -221,6 +227,8 @@ pub struct TreeFile {
     pub size: i64,
     pub mtime: i64,
     pub container_path: Option<String>,
+    /// Tags attached directly to this file.
+    pub tags: Vec<String>,
 }
 
 /// One level of the tree: the folders and files inside a folder.
@@ -237,6 +245,16 @@ pub struct TreeChildren {
 /// would freeze the window long before it informed anyone.
 pub const TREE_PAGE: i64 = 5000;
 
+/// Where a file lives in its volume's tree, enough to open every level above
+/// it. `dir_ids` runs from the volume root to the file's own folder.
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct TreePath {
+    pub volume_label: String,
+    pub volume_serial: String,
+    pub dir_ids: Vec<i64>,
+    pub file_id: i64,
+}
+
 fn lock_err() -> anyhow::Error {
     anyhow::anyhow!("db lock poisoned")
 }
@@ -247,6 +265,10 @@ impl Db {
         // Per-connection pragma: foreign keys (incl. ON DELETE CASCADE) are
         // off by default in SQLite and must be enabled on every connection.
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        // A long delete holds the write lock. Readers keep working in WAL, but
+        // a second writer should wait instead of failing with "database is
+        // locked" the moment it arrives.
+        conn.busy_timeout(std::time::Duration::from_secs(10))?;
         conn.execute_batch(include_str!("schema.sql"))?;
         Ok(Self {
             conn: Mutex::new(conn),
@@ -306,8 +328,18 @@ impl Db {
     /// This never touches the disk. The catalog is an index, and forgetting a
     /// disc must be recoverable by scanning it again.
     pub fn delete_volume(&self, id: i64) -> Result<usize> {
-        let c = self.conn.lock().map_err(|_| lock_err())?;
-        let n = c.execute("DELETE FROM volumes WHERE id=?1", params![id])?;
+        let mut c = self.conn.lock().map_err(|_| lock_err())?;
+        let tx = c.transaction()?;
+        let n = tx.execute("DELETE FROM volumes WHERE id=?1", params![id])?;
+        if n > 0 {
+            // Tags are shared by name; only the ones that lost every link go.
+            tx.execute(
+                "DELETE FROM tags WHERE NOT EXISTS(SELECT 1 FROM file_tags WHERE tag_id = tags.id) \
+                 AND NOT EXISTS(SELECT 1 FROM dir_tags WHERE tag_id = tags.id)",
+                [],
+            )?;
+        }
+        tx.commit()?;
         Ok(n)
     }
     pub fn insert_dir(
@@ -471,6 +503,22 @@ impl Db {
         if let Some(v) = &q.volume_serial {
             sql.push_str(" AND v.serial = ?");
             args.push(v.clone().into());
+        }
+        for tag in &q.tags {
+            // Direct tag, or any tagged folder above the file. The recursive
+            // CTE is per tag so several tags mean AND, not OR.
+            sql.push_str(
+                " AND (EXISTS (SELECT 1 FROM file_tags ft JOIN tags t ON t.id = ft.tag_id \
+                  WHERE ft.file_id = f.id AND t.name = ?) \
+                  OR f.dir_id IN (WITH RECURSIVE tagged_dirs(id) AS ( \
+                    SELECT d.id FROM dirs d JOIN dir_tags dt ON dt.dir_id = d.id \
+                    JOIN tags t ON t.id = dt.tag_id WHERE t.name = ? \
+                    UNION ALL \
+                    SELECT c.id FROM dirs c JOIN tagged_dirs td ON c.parent_id = td.id \
+                  ) SELECT id FROM tagged_dirs))",
+            );
+            args.push(tag.clone().into());
+            args.push(tag.clone().into());
         }
         sql.push_str(" LIMIT ?");
         args.push(limit.into());
@@ -731,6 +779,173 @@ impl Db {
         Ok(rows)
     }
 
+    /// Trim a user-supplied tag and reject the two values that cannot be
+    /// stored meaningfully. A leading `#` is accepted because that is how the
+    /// search syntax writes a tag.
+    fn clean_tag(name: &str) -> Result<String> {
+        let tag = name.trim().trim_start_matches('#').trim();
+        if tag.is_empty() {
+            anyhow::bail!("la etiqueta no puede estar vacía");
+        }
+        if tag.chars().count() > 64 {
+            anyhow::bail!("la etiqueta es demasiado larga");
+        }
+        Ok(tag.to_string())
+    }
+
+    fn tags_for_file(c: &rusqlite::Connection, file_id: i64) -> Result<Vec<String>> {
+        let mut stmt = c.prepare(
+            "SELECT t.name FROM file_tags ft JOIN tags t ON t.id = ft.tag_id \
+             WHERE ft.file_id = ?1 ORDER BY t.name COLLATE NOCASE",
+        )?;
+        let rows = stmt
+            .query_map(params![file_id], |r| r.get(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    fn tags_for_dir(c: &rusqlite::Connection, dir_id: i64) -> Result<Vec<String>> {
+        let mut stmt = c.prepare(
+            "SELECT t.name FROM dir_tags dt JOIN tags t ON t.id = dt.tag_id \
+             WHERE dt.dir_id = ?1 ORDER BY t.name COLLATE NOCASE",
+        )?;
+        let rows = stmt
+            .query_map(params![dir_id], |r| r.get(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Attach a tag to a file, creating the tag name on first use. Returns the
+    /// file's complete tag list so the UI never has to guess what changed.
+    pub fn add_file_tag(&self, file_id: i64, name: &str) -> Result<Vec<String>> {
+        let name = Self::clean_tag(name)?;
+        let mut c = self.conn.lock().map_err(|_| lock_err())?;
+        let tx = c.transaction()?;
+        tx.execute("INSERT OR IGNORE INTO tags(name) VALUES(?1)", params![name])?;
+        let tag_id: i64 =
+            tx.query_row("SELECT id FROM tags WHERE name = ?1", params![name], |r| {
+                r.get(0)
+            })?;
+        tx.execute(
+            "INSERT OR IGNORE INTO file_tags(file_id, tag_id) VALUES(?1, ?2)",
+            params![file_id, tag_id],
+        )?;
+        let tags = Self::tags_for_file(&tx, file_id)?;
+        tx.commit()?;
+        Ok(tags)
+    }
+
+    pub fn remove_file_tag(&self, file_id: i64, name: &str) -> Result<Vec<String>> {
+        let name = Self::clean_tag(name)?;
+        let mut c = self.conn.lock().map_err(|_| lock_err())?;
+        let tx = c.transaction()?;
+        tx.execute(
+            "DELETE FROM file_tags WHERE file_id = ?1 AND tag_id = \
+             (SELECT id FROM tags WHERE name = ?2)",
+            params![file_id, name],
+        )?;
+        tx.execute(
+            "DELETE FROM tags WHERE NOT EXISTS(SELECT 1 FROM file_tags WHERE tag_id = tags.id) \
+             AND NOT EXISTS(SELECT 1 FROM dir_tags WHERE tag_id = tags.id)",
+            [],
+        )?;
+        let tags = Self::tags_for_file(&tx, file_id)?;
+        tx.commit()?;
+        Ok(tags)
+    }
+
+    pub fn file_tags(&self, file_id: i64) -> Result<Vec<String>> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        Self::tags_for_file(&c, file_id)
+    }
+
+    /// Attach a tag to a folder. Search inherits it through the whole subtree;
+    /// the tree still shows it only on the folder that carries it.
+    pub fn add_dir_tag(&self, dir_id: i64, name: &str) -> Result<Vec<String>> {
+        let name = Self::clean_tag(name)?;
+        let mut c = self.conn.lock().map_err(|_| lock_err())?;
+        let tx = c.transaction()?;
+        tx.execute("INSERT OR IGNORE INTO tags(name) VALUES(?1)", params![name])?;
+        let tag_id: i64 =
+            tx.query_row("SELECT id FROM tags WHERE name = ?1", params![name], |r| {
+                r.get(0)
+            })?;
+        tx.execute(
+            "INSERT OR IGNORE INTO dir_tags(dir_id, tag_id) VALUES(?1, ?2)",
+            params![dir_id, tag_id],
+        )?;
+        let tags = Self::tags_for_dir(&tx, dir_id)?;
+        tx.commit()?;
+        Ok(tags)
+    }
+
+    pub fn remove_dir_tag(&self, dir_id: i64, name: &str) -> Result<Vec<String>> {
+        let name = Self::clean_tag(name)?;
+        let mut c = self.conn.lock().map_err(|_| lock_err())?;
+        let tx = c.transaction()?;
+        tx.execute(
+            "DELETE FROM dir_tags WHERE dir_id = ?1 AND tag_id = \
+             (SELECT id FROM tags WHERE name = ?2)",
+            params![dir_id, name],
+        )?;
+        tx.execute(
+            "DELETE FROM tags WHERE NOT EXISTS(SELECT 1 FROM file_tags WHERE tag_id = tags.id) \
+             AND NOT EXISTS(SELECT 1 FROM dir_tags WHERE tag_id = tags.id)",
+            [],
+        )?;
+        let tags = Self::tags_for_dir(&tx, dir_id)?;
+        tx.commit()?;
+        Ok(tags)
+    }
+
+    pub fn dir_tags(&self, dir_id: i64) -> Result<Vec<String>> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        Self::tags_for_dir(&c, dir_id)
+    }
+
+    /// Every tag in the catalog, for the editor's suggestions.
+    pub fn list_tags(&self) -> Result<Vec<String>> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let mut stmt = c.prepare("SELECT name FROM tags ORDER BY name COLLATE NOCASE")?;
+        let rows = stmt
+            .query_map([], |r| r.get(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Where a file sits in its volume's tree, from the root to its folder.
+    pub fn tree_path(&self, file_id: i64) -> Result<Option<TreePath>> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let base: Option<(String, String, i64)> = c
+            .query_row(
+                "SELECT v.label, v.serial, f.dir_id FROM files f \
+                 JOIN volumes v ON v.id = f.volume_id WHERE f.id = ?1",
+                params![file_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        let Some((volume_label, volume_serial, dir_id)) = base else {
+            return Ok(None);
+        };
+        let mut stmt = c.prepare(
+            "WITH RECURSIVE ancestors(id, parent_id) AS ( \
+               SELECT id, parent_id FROM dirs WHERE id = ?1 \
+               UNION ALL \
+               SELECT d.id, d.parent_id FROM dirs d JOIN ancestors a ON d.id = a.parent_id \
+             ) SELECT id FROM ancestors",
+        )?;
+        let mut dir_ids = stmt
+            .query_map(params![dir_id], |r| r.get(0))?
+            .collect::<std::result::Result<Vec<i64>, _>>()?;
+        dir_ids.reverse();
+        Ok(Some(TreePath {
+            volume_label,
+            volume_serial,
+            dir_ids,
+            file_id,
+        }))
+    }
+
     /// One level of the catalog's tree: the folders and files inside a folder
     /// of a volume. `parent` is a dir id; `None` means the volume's root.
     ///
@@ -808,7 +1023,7 @@ impl Db {
              FROM dirs d WHERE d.volume_id=?1 AND d.parent_id=?2 \
              ORDER BY d.name COLLATE NOCASE LIMIT ?3",
         )?;
-        let dirs = stmt
+        let mut dirs = stmt
             .query_map(params![volume_id, parent, TREE_PAGE], |r| {
                 Ok(TreeDir {
                     id: r.get(0)?,
@@ -816,16 +1031,34 @@ impl Db {
                     files: r.get(2)?,
                     size: r.get(3)?,
                     dirs: r.get(4)?,
+                    tags: Vec::new(),
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        // One extra query for the whole level, not one per folder.
+        let mut tag_stmt = c.prepare(
+            "SELECT dt.dir_id, t.name FROM dir_tags dt \
+             JOIN tags t ON t.id = dt.tag_id JOIN dirs d ON d.id = dt.dir_id \
+             WHERE d.volume_id=?1 AND d.parent_id=?2 ORDER BY t.name COLLATE NOCASE",
+        )?;
+        let mut dir_tags: HashMap<i64, Vec<String>> = HashMap::new();
+        for row in tag_stmt.query_map(params![volume_id, parent], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+        })? {
+            let (dir_id, tag) = row?;
+            dir_tags.entry(dir_id).or_default().push(tag);
+        }
+        for dir in &mut dirs {
+            dir.tags = dir_tags.remove(&dir.id).unwrap_or_default();
+        }
 
         let mut stmt = c.prepare(
             "SELECT f.id, f.name, COALESCE(f.ext, ''), f.size, COALESCE(f.mtime, 0), f.container_path \
              FROM files f WHERE f.volume_id=?1 AND f.dir_id=?2 \
              ORDER BY f.name COLLATE NOCASE LIMIT ?3",
         )?;
-        let files = stmt
+        let mut files = stmt
             .query_map(params![volume_id, parent, TREE_PAGE], |r| {
                 Ok(TreeFile {
                     id: r.get(0)?,
@@ -834,9 +1067,26 @@ impl Db {
                     size: r.get(3)?,
                     mtime: r.get(4)?,
                     container_path: r.get(5)?,
+                    tags: Vec::new(),
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let mut tag_stmt = c.prepare(
+            "SELECT ft.file_id, t.name FROM file_tags ft \
+             JOIN tags t ON t.id = ft.tag_id JOIN files f ON f.id = ft.file_id \
+             WHERE f.volume_id=?1 AND f.dir_id=?2 ORDER BY t.name COLLATE NOCASE",
+        )?;
+        let mut file_tags: HashMap<i64, Vec<String>> = HashMap::new();
+        for row in tag_stmt.query_map(params![volume_id, parent], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+        })? {
+            let (file_id, tag) = row?;
+            file_tags.entry(file_id).or_default().push(tag);
+        }
+        for file in &mut files {
+            file.tags = file_tags.remove(&file.id).unwrap_or_default();
+        }
 
         Ok(TreeChildren {
             dirs,

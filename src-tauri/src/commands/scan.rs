@@ -1011,6 +1011,7 @@ mod tests {
                 max_size: None,
                 volume: None,
                 volume_serial: None,
+                tags: Vec::new(),
             },
             1000,
         )

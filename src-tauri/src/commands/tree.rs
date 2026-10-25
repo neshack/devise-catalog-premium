@@ -15,3 +15,10 @@ pub fn tree_children(
     db.tree_children(&volume, serial.as_deref(), parent)
         .map_err(|e| e.to_string())
 }
+
+/// The folder chain that leads to a file, for "show it in the tree".
+#[tauri::command]
+pub fn tree_path(db_path: String, file_id: i64) -> Result<Option<core_db::TreePath>, String> {
+    let db = core_db::Db::open(Path::new(&db_path)).map_err(|e| e.to_string())?;
+    db.tree_path(file_id).map_err(|e| e.to_string())
+}

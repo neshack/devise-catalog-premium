@@ -5,6 +5,7 @@ export interface ParsedQuery {
   max_size?: number;
   volume?: string;
   exts?: string[];
+  tags?: string[];
 }
 export function parseSize(s: string): number | undefined {
   const m = s.match(/^([0-9]+)(KB|MB|GB)$/i);
@@ -20,8 +21,17 @@ export function parseSearchQuery(raw: string): ParsedQuery {
   let max_size: number | undefined;
   let volume: string | undefined;
   const exts: string[] = [];
+  const tags: string[] = [];
   const ftsParts: string[] = [];
   for (const t of tokens) {
+    const low = t.toLowerCase();
+    if (low.startsWith("tag:") || t.startsWith("#")) {
+      const tag = (low.startsWith("tag:") ? t.slice(4) : t.slice(1))
+        .replace(/^"|"$/g, "")
+        .trim();
+      if (tag !== "" && !tags.includes(tag)) tags.push(tag);
+      continue;
+    }
     if (t.startsWith("*.") && t.length > 2) {
       ext = t.slice(2).toLowerCase();
       if (!exts.includes(ext)) exts.push(ext);
@@ -62,12 +72,13 @@ export function parseSearchQuery(raw: string): ParsedQuery {
     max_size,
     volume,
     exts: exts.length > 0 ? exts : undefined,
+    tags: tags.length > 0 ? tags : undefined,
   };
 }
 
 /** Structured filter chips for the UI, derived from the raw query string. */
 export interface QueryChip {
-  kind: "text" | "ext" | "size-min" | "size-max" | "volume";
+  kind: "text" | "ext" | "size-min" | "size-max" | "volume" | "tag";
   /** Token(s) in the raw query that produced this chip (for removal). */
   token: string;
   label: string;
@@ -89,6 +100,9 @@ export function describeQuery(raw: string): QueryChip[] {
       chips.push({ kind: "size-max", token: t, label: `≤ ${t.slice(6)}` });
     } else if (low.startsWith("volume:")) {
       chips.push({ kind: "volume", token: t, label: t.slice(7).replace(/^"|"$/g, "") || t });
+    } else if (low.startsWith("tag:") || t.startsWith("#")) {
+      const tag = (low.startsWith("tag:") ? t.slice(4) : t.slice(1)).replace(/^"|"$/g, "");
+      chips.push({ kind: "tag", token: t, label: `#${tag || t}` });
     } else if (t.replace(/\*/g, "").length > 0) {
       chips.push({ kind: "text", token: t, label: t.replace(/\*/g, "") });
     }

@@ -91,7 +91,7 @@ test("el inspector muestra los archivos dentro de un ZIP sin extraerlos", async 
   await row.click();
   const inspector = page.getByRole("complementary", { name: /detalles del archivo/i });
   await expect(inspector.getByText("Contenido en")).toBeVisible();
-  await expect(inspector.getByText("Comprimidos/backup-movil.zip")).toBeVisible();
+  await expect(inspector.getByText("Comprimidos/backup-movil.zip", { exact: true })).toBeVisible();
   // Nothing inside an archive is hashed or parsed.
   await expect(inspector.locator(".field").filter({ hasText: "Hash" })).toContainText("—");
   // …and the panel must not tell the user to rescan for something a rescan

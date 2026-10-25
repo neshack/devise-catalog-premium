@@ -13,6 +13,7 @@ import type {
   SortDir,
   SortKey,
   TreeChildren,
+  TreePath,
   VolumeSummary,
 } from "../lib/types";
 import { SCAN_DONE_STATES } from "../lib/types";
@@ -118,7 +119,7 @@ interface CatalogState {
   setView: (v: View) => void;
   setVolumeFilter: (volume: { label: string; serial: string } | null) => void;
   /** Forget a volume from the catalog. The files on disk are never touched. */
-  deleteVolume: (volume: VolumeSummary) => Promise<void>;
+  deleteVolume: (volume: VolumeSummary) => Promise<boolean>;
   /** Read (or re-read) the top level of the volume the tree is showing. */
   loadTree: () => Promise<void>;
   /** Open a folder, reading it the first time; close it when already open. */
@@ -129,6 +130,10 @@ interface CatalogState {
    * The inspector reads `Hit`, so the store resolves the row by id first.
    */
   selectTreeFile: (fileId: number) => Promise<void>;
+  /** Open the volume tree, every folder above the file, and select it. */
+  revealInTree: (fileId: number) => Promise<void>;
+  /** Keep an already-loaded tree row in sync after its tags change. */
+  updateTreeTags: (target: { kind: "file" | "dir"; id: number }, tags: string[]) => void;
   setSort: (key: SortKey, dir?: SortDir) => void;
   loadDuplicates: () => Promise<void>;
   setScanOpen: (open: boolean) => void;
@@ -212,12 +217,18 @@ export const useCatalog = create<CatalogState>((set, get) => ({
 
   runSearch: async () => {
     const { query, volumeFilter } = get();
-    const effective = volumeFilter ? `${query} volume:"${volumeFilter.label}"`.trim() : query.trim();
-    if (effective === "") {
+    const text = query.trim();
+    // A volume filter alone is navigation, not a search: selecting a volume
+    // must open its tree instead of throwing the user into an empty results
+    // list.
+    if (text === "") {
       set({ hits: [], searchedFor: "", searchStatus: "idle", elapsedMs: null, selected: null });
       return;
     }
-    set({ searchStatus: "searching" });
+    const effective = volumeFilter ? `${text} volume:"${volumeFilter.label}"` : text;
+    // A search is a question about the catalog, so it opens the results
+    // surface even when the user was walking the tree.
+    set({ searchStatus: "searching", view: "results" });
     const t0 = performance.now();
     try {
       const rows = await call<Hit[]>("search", {
@@ -273,13 +284,22 @@ export const useCatalog = create<CatalogState>((set, get) => ({
     const prev = get().volumeFilter;
     const changed =
       prev?.label !== volumeFilter?.label || prev?.serial !== volumeFilter?.serial;
-    if (changed) set({ volumeFilter, tree: EMPTY_TREE, view: "tree" });
+    if (changed) {
+      // With an active query the user is filtering results, not entering the
+      // tree: switching surfaces would throw the search away.
+      set({
+        volumeFilter,
+        tree: EMPTY_TREE,
+        ...(get().query.trim() === "" ? { view: "tree" as const } : {}),
+      });
+      if (get().query.trim() !== "") void get().runSearch();
+    }
   },
 
   deleteVolume: async (volume) => {
     if (get().scan.running) {
       get().pushToast("error", "Espera a que termine el escaneo antes de eliminar un volumen.");
-      return;
+      return false;
     }
     try {
       await call("delete_volume", { dbPath: get().dbPath, volumeId: volume.id });
@@ -297,17 +317,19 @@ export const useCatalog = create<CatalogState>((set, get) => ({
           ? { volumeFilter: null, tree: EMPTY_TREE, hits: [], view: "tree" as const }
           : {}),
       });
-      await get().refreshVolumes();
-      await get().refreshScan();
-      // Results are a snapshot: re-run the query so rows from the volume that
-      // just left the catalog cannot linger on screen.
-      await get().runSearch();
       get().pushToast(
         "success",
         `Volumen «${volume.label}» eliminado del catálogo. Los archivos del disco siguen intactos.`,
       );
+      // The write is done; refreshing the views is bookkeeping and must not
+      // keep the dialog (or the user) waiting.
+      void get().refreshVolumes();
+      void get().refreshScan();
+      if (get().query.trim() !== "") void get().runSearch();
+      return true;
     } catch (e) {
       get().pushToast("error", `No se pudo eliminar el volumen: ${String(e)}`);
+      return false;
     }
   },
 
@@ -465,6 +487,63 @@ export const useCatalog = create<CatalogState>((set, get) => ({
       get().pushToast("error", `No se pudo abrir el archivo seleccionado: ${String(e)}`);
     }
   },
+
+  revealInTree: async (fileId) => {
+    try {
+      const path = await call<TreePath | null>("tree_path", { dbPath: get().dbPath, fileId });
+      if (path === null) {
+        get().pushToast("error", "Ese archivo ya no está en el catálogo.");
+        return;
+      }
+      const volume = { label: path.volume_label, serial: path.volume_serial };
+      const fetchLevel = (parent: number | null) =>
+        call<TreeChildren>("tree_children", {
+          dbPath: get().dbPath,
+          volume: volume.label,
+          serial: volume.serial,
+          parent,
+        });
+      // The path arrives root-first; the root level is already the first load,
+      // then each folder above the file is read and left open.
+      const root = await fetchLevel(null);
+      const children: Record<string, TreeChildren> = { [TREE_ROOT]: root };
+      const expanded: string[] = [];
+      for (const dirId of path.dir_ids.slice(1)) {
+        const key = String(dirId);
+        children[key] = await fetchLevel(dirId);
+        expanded.push(key);
+      }
+      set({
+        volumeFilter: volume,
+        view: "tree",
+        tree: { loading: null, children, expanded, error: null },
+      });
+      await get().selectTreeFile(fileId);
+    } catch (e) {
+      get().pushToast("error", `No se pudo ubicar el archivo en el árbol: ${String(e)}`);
+    }
+  },
+
+  updateTreeTags: (target, tags) =>
+    set((s) => {
+      const children = { ...s.tree.children };
+      for (const [key, level] of Object.entries(children)) {
+        if (target.kind === "dir") {
+          const dirs = level.dirs.map((dir) => (dir.id === target.id ? { ...dir, tags } : dir));
+          if (dirs.some((dir, i) => dir !== level.dirs[i])) {
+            children[key] = { ...level, dirs };
+          }
+        } else {
+          const files = level.files.map((file) =>
+            file.id === target.id ? { ...file, tags } : file,
+          );
+          if (files.some((file, i) => file !== level.files[i])) {
+            children[key] = { ...level, files };
+          }
+        }
+      }
+      return { tree: { ...s.tree, children } };
+    }),
 
   runExport: async (fmt) => {
     try {

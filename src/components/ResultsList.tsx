@@ -1,12 +1,14 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { formatBytes, formatDate, hitFullPath } from "../lib/format";
 import { sortHits, useCatalog } from "../stores/catalog";
 import type { Hit } from "../lib/types";
-import { IconSearch, IconSpinner } from "./icons";
+import ContextMenu from "./ContextMenu";
+import TagDialog, { type TagTarget } from "./TagDialog";
+import { IconCopy, IconFile, IconFolder, IconSearch, IconSpinner, IconTag } from "./icons";
 import { EmptyState } from "./EmptyState";
 
-const EXAMPLES = ["*.mp3", "size:>100MB", "ext:{jpg,png}", "*.zip"];
+const EXAMPLES = ["*.mp3", "size:>100MB", "ext:{jpg,png}", "#vacaciones"];
 
 /**
  * Términos del texto libre que se pueden resaltar dentro de un nombre: sin
@@ -62,7 +64,12 @@ export default function ResultsList() {
     sortKey,
     sortDir,
     setQuery,
+    revealInTree,
+    pushToast,
+    updateTreeTags,
   } = useCatalog();
+  const [menu, setMenu] = useState<{ x: number; y: number; hit: Hit } | null>(null);
+  const [tagTarget, setTagTarget] = useState<TagTarget | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const sorted = useMemo(() => sortHits(hits, sortKey, sortDir), [hits, sortKey, sortDir]);
@@ -78,6 +85,13 @@ export default function ResultsList() {
   // Keyboard navigation over the result list (↑/↓/Enter).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if ((e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) && selected !== null) {
+        e.preventDefault();
+        const row = document.querySelector<HTMLElement>(`[data-hit-id="${selected.id}"]`);
+        const rect = row?.getBoundingClientRect();
+        setMenu({ x: rect?.left ?? 24, y: rect?.bottom ?? 24, hit: selected });
+        return;
+      }
       if (e.key === "Enter" && selected !== null) return; // inspector already shows it
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
       const target = e.target as HTMLElement;
@@ -154,6 +168,10 @@ export default function ResultsList() {
                 hit={h}
                 selected={selected?.id === h.id}
                 onSelect={select}
+                onContextMenu={(hit, x, y) => {
+                  select(hit);
+                  setMenu({ x, y, hit });
+                }}
                 offset={vi.start}
                 terms={terms}
               />
@@ -161,6 +179,52 @@ export default function ResultsList() {
           })}
         </div>
       </div>
+
+      {menu !== null && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={[
+            {
+              label: "Ver detalles",
+              icon: <IconFile size={14} />,
+              onSelect: () => select(menu.hit),
+            },
+            {
+              label: "Ubicar en el árbol",
+              icon: <IconFolder size={14} />,
+              onSelect: () => void revealInTree(menu.hit.id),
+            },
+            {
+              label: "Etiquetar archivo…",
+              icon: <IconTag size={14} />,
+              onSelect: () => {
+                select(menu.hit);
+                setTagTarget({ kind: "file", id: menu.hit.id, name: menu.hit.name });
+              },
+            },
+            {
+              label: "Copiar ruta completa",
+              icon: <IconCopy size={14} />,
+              onSelect: () => {
+                void navigator.clipboard
+                  ?.writeText(hitFullPath(menu.hit))
+                  .then(() => pushToast("success", "Ruta completa copiada."))
+                  .catch(() => pushToast("error", "No se pudo copiar la ruta."));
+              },
+            },
+          ]}
+        />
+      )}
+
+      {tagTarget !== null && (
+        <TagDialog
+          target={tagTarget}
+          onClose={() => setTagTarget(null)}
+          onChanged={(tags) => updateTreeTags({ kind: "file", id: tagTarget.id }, tags)}
+        />
+      )}
     </>
   );
 }
@@ -169,12 +233,14 @@ function Row({
   hit,
   selected: isSelected,
   onSelect,
+  onContextMenu,
   offset,
   terms,
 }: {
   hit: Hit;
   selected: boolean;
   onSelect: (h: Hit) => void;
+  onContextMenu: (hit: Hit, x: number, y: number) => void;
   offset: number;
   terms: string[];
 }) {
@@ -189,6 +255,7 @@ function Row({
   return (
     <div
       data-testid="result-row"
+      data-hit-id={hit.id}
       role="listitem"
       aria-selected={isSelected}
       tabIndex={-1}
@@ -201,6 +268,10 @@ function Row({
         transform: `translateY(${offset}px)`,
       }}
       onClick={() => onSelect(hit)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContextMenu(hit, e.clientX, e.clientY);
+      }}
       title={fullPath}
     >
       <span className="row__name">

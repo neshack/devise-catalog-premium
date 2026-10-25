@@ -36,9 +36,9 @@ export default function DeleteVolumeDialog({
   const submit = async () => {
     if (!matches || busy || blocked) return;
     setBusy(true);
-    await deleteVolume(volume);
+    const removed = await deleteVolume(volume);
     setBusy(false);
-    onClose();
+    if (removed) onClose();
   };
 
   return (
@@ -50,6 +50,7 @@ export default function DeleteVolumeDialog({
         className="modal modal--danger"
         role="alertdialog"
         aria-modal="true"
+        aria-busy={busy}
         aria-labelledby="delete-volume-title"
         aria-describedby="delete-volume-desc"
       >
@@ -107,7 +108,8 @@ export default function DeleteVolumeDialog({
               placeholder={volume.label}
             />
             <span className="form-field__help">
-              Esta acción sólo afecta al catálogo local de este equipo.
+              Esta acción sólo afecta al catálogo local de este equipo. En
+              volúmenes grandes puede tardar; la ventana sigue usable.
             </span>
           </div>
         </div>

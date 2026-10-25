@@ -129,6 +129,8 @@ export interface TreeDir {
   files: number;
   dirs: number;
   size: number;
+  /** Tags attached directly to this folder (not inherited ones). */
+  tags: string[];
 }
 
 export interface TreeFile {
@@ -138,6 +140,8 @@ export interface TreeFile {
   size: number;
   mtime: number;
   container_path: string | null;
+  /** Tags attached directly to this file. */
+  tags: string[];
 }
 
 /** One level of the tree: folders and files inside a folder. */
@@ -146,4 +150,13 @@ export interface TreeChildren {
   files: TreeFile[];
   files_total: number;
   dirs_total: number;
+}
+
+/** Where a file lives inside its volume's tree. */
+export interface TreePath {
+  volume_label: string;
+  volume_serial: string;
+  /** Root first, the file's own folder last. */
+  dir_ids: number[];
+  file_id: number;
 }

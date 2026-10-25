@@ -44,6 +44,7 @@ fn insert_and_search_by_ext() {
                 max_size: None,
                 volume: None,
                 volume_serial: None,
+                tags: Vec::new(),
             },
             50,
         )

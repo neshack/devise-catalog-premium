@@ -27,6 +27,7 @@ interface MockFile {
   audio_json: string | null;
   image_json: string | null;
   container_path: string | null;
+  tags: string[];
 }
 
 const DAY = 86_400;
@@ -49,6 +50,8 @@ interface Seed {
    * relative to the volume root. `name` is then the path inside the archive.
    */
   container?: string;
+  /** Direct tags; folder tags live in `dirTags`. */
+  tags?: string[];
 }
 
 function seeds(): Seed[] {
@@ -58,7 +61,7 @@ function seeds(): Seed[] {
   // ── Backup-12: documents, projects, VMs ──────────────────────────────
   const docs = ["informe-anual", "contrato-arrendamiento", "notas-reunion", "presupuesto", "manual-usuario", "factura-0142", "cv-actualizado", "tesis-borrador"];
   docs.forEach((d, i) =>
-    push({ volume: "Backup-12", path: "/Documentos", name: `${d}.pdf`, ext: "pdf", size: 240_000 + i * 91_237, ageDays: 12 + i * 9 }),
+    push({ volume: "Backup-12", path: "/Documentos", name: `${d}.pdf`, ext: "pdf", size: 240_000 + i * 91_237, ageDays: 12 + i * 9, tags: ["documentos"] }),
   );
   ["fotos-vacaciones", "proyecto-web", "musica-importada", "backup-movil"].forEach((z, i) =>
     push({ volume: "Backup-12", path: "/Comprimidos", name: `${z}.zip`, ext: "zip", size: (i + 2) * 734_003_217, ageDays: 30 + i * 15 }),
@@ -106,6 +109,7 @@ function seeds(): Seed[] {
         size: 28_000_000 + i * 4_213_997,
         ageDays: 400 + i * 3,
         audio: { artist, album, bitrate: 1411 },
+        tags: ["música"],
       });
       push({
         volume: "Música-90s",
@@ -115,6 +119,7 @@ function seeds(): Seed[] {
         size: 6_400_000 + i * 812_311,
         ageDays: 380 + i * 3,
         audio: { artist, album, bitrate: 320 },
+        tags: ["música"],
       });
     }
   }
@@ -130,6 +135,7 @@ function seeds(): Seed[] {
       size: 4_800_000 + i * 213_771,
       ageDays: 70 + i,
       image: { width: 4032, height: 3024 },
+      tags: ["vacaciones"],
     }),
   );
   ["IMG_4412", "DSC_0118"].forEach((p, i) =>
@@ -171,6 +177,7 @@ function buildFiles(): MockFile[] {
       audio_json: sd.audio ? JSON.stringify(sd.audio) : null,
       image_json: sd.image ? JSON.stringify(sd.image) : null,
       container_path: sd.container ?? null,
+      tags: sd.tags ?? [],
     };
   });
 }
@@ -286,6 +293,9 @@ interface MockArgs {
   volume?: string;
   volume_id?: number;
   volumeId?: number;
+  dirId?: number;
+  dir_id?: number;
+  name?: string;
   parent?: number | null;
   out_path?: string | null;
   outPath?: string | null;
@@ -300,6 +310,18 @@ interface MockLevel {
  * One volume's levels, built from the demo files the same way the scanner's
  * dirs table holds them: direct children per folder, direct counts per folder.
  */
+// Folder tags live by volume+path; the demo has no database ids to key them.
+const dirTags = new Map<string, string[]>([
+  ["Fotos-2024\u0000/2024/07-vacaciones", ["playa"]],
+  ["Música-90s\u0000/Musica/Nevermind-1991", ["grunge"]],
+]);
+
+function dirTagKey(volume: string, path: string): string {
+  return `${volume}\u0000${path}`;
+}
+
+let nextTreeDirId = 1;
+
 function buildTreeLevels(volumeLabel: string) {
   const mine = files.filter((f) => f.volume === volumeLabel);
   const dirPaths = new Set<string>();
@@ -321,13 +343,19 @@ function buildTreeLevels(volumeLabel: string) {
     return fresh;
   };
   levelAt("");
-  let nextId = 1;
   for (const p of [...dirPaths].sort()) {
     const cut = p.lastIndexOf("/");
     const parent = cut <= 0 ? "" : p.slice(0, cut);
-    const id = nextId++;
+    const id = nextTreeDirId++;
     pathOfId.set(id, p);
-    levelAt(parent).dirs.push({ id, name: p.slice(cut + 1), files: 0, dirs: 0, size: 0 });
+    levelAt(parent).dirs.push({
+      id,
+      name: p.slice(cut + 1),
+      files: 0,
+      dirs: 0,
+      size: 0,
+      tags: dirTags.get(dirTagKey(volumeLabel, p)) ?? [],
+    });
   }
   for (const f of mine) {
     levelAt(f.path === "/" ? "" : f.path).files.push({
@@ -337,6 +365,7 @@ function buildTreeLevels(volumeLabel: string) {
       size: f.size,
       mtime: f.mtime,
       container_path: f.container_path,
+      tags: f.tags,
     });
   }
   for (const [p, level] of byPath) {
@@ -355,16 +384,54 @@ function buildTreeLevels(volumeLabel: string) {
 
 const treeLevels = new Map<string, ReturnType<typeof buildTreeLevels>>();
 
+function findMockDir(id: number): { volume: string; path: string } | null {
+  for (const summary of volumeSummaries()) {
+    let built = treeLevels.get(summary.label);
+    if (built === undefined) {
+      built = buildTreeLevels(summary.label);
+      treeLevels.set(summary.label, built);
+    }
+    for (const [dirId, path] of built.pathOfId) {
+      if (dirId === id) return { volume: summary.label, path };
+    }
+  }
+  return null;
+}
+
+function normalizeMockTag(name: string): string {
+  return name.trim().replace(/^#/, "").trim();
+}
+
+function sortedTags(tags: string[]): string[] {
+  return [...tags].sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
+}
+
+function allMockTags(): string[] {
+  const found = new Set<string>();
+  for (const file of files) for (const tag of file.tags) found.add(tag);
+  for (const tags of dirTags.values()) for (const tag of tags) found.add(tag);
+  return sortedTags([...found]);
+}
+
 /** Mock implementation of every Tauri command the UI calls. */
 export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
   const raw = (args.raw ?? "").trim();
   const tokens = raw.split(/\s+/).filter(Boolean);
   const terms = tokens
-    .filter((t) => !/^\*\./.test(t) && !/^ext:/i.test(t) && !/^size:[<>=]/i.test(t) && !/^volume:/i.test(t))
+    .filter(
+      (t) =>
+        !/^\*\./.test(t) &&
+        !/^ext:/i.test(t) &&
+        !/^size:[<>=]/i.test(t) &&
+        !/^volume:/i.test(t) &&
+        !/^tag:/i.test(t) &&
+        !t.startsWith("#"),
+    )
     .map((t) => t.replaceAll("*", "").replaceAll('"', "").toLowerCase())
     .filter(Boolean);
   const exts: string[] = [];
   const sizes: Array<[string, number]> = [];
+  const tags: string[] = [];
   let volume: string | null = null;
   for (const t of tokens) {
     const low = t.toLowerCase();
@@ -379,6 +446,8 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
         sizes.push([m[1] ?? "=", Number(m[2]) * mult]);
       }
     } else if (low.startsWith("volume:")) volume = t.slice(7).replace(/^"|"$/g, "");
+    else if (low.startsWith("tag:")) tags.push(t.slice(4).replace(/^"|"$/g, ""));
+    else if (t.startsWith("#")) tags.push(t.slice(1).replace(/^"|"$/g, ""));
   }
 
   const delay = <X,>(v: X): Promise<X> => new Promise((r) => setTimeout(() => r(v), 60));
@@ -401,7 +470,28 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
         if (serialFilter !== null && serialFilter !== undefined) {
           if ((byLabel.get(f.volume) ?? null) !== serialFilter) return false;
         }
-        return terms.length > 0 || exts.length > 0 || sizes.length > 0 || volume !== null;
+        if (tags.length > 0) {
+          const available = new Set(f.tags.map((tag) => tag.toLowerCase()));
+          let p = f.path === "/" ? "" : f.path;
+          while (p !== "") {
+            for (const tag of dirTags.get(dirTagKey(f.volume, p)) ?? []) {
+              available.add(tag.toLowerCase());
+            }
+            const cut = p.lastIndexOf("/");
+            p = cut <= 0 ? "" : p.slice(0, cut);
+          }
+          for (const tag of dirTags.get(dirTagKey(f.volume, "")) ?? []) {
+            available.add(tag.toLowerCase());
+          }
+          if (!tags.every((tag) => available.has(tag.toLowerCase()))) return false;
+        }
+        return (
+          terms.length > 0 ||
+          exts.length > 0 ||
+          sizes.length > 0 ||
+          volume !== null ||
+          tags.length > 0
+        );
       });
       return delay(rows.slice(0, args.limit ?? 200).map(toHit) as T);
     }
@@ -414,10 +504,79 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
       for (let i = files.length - 1; i >= 0; i--) {
         if (files[i].volume === volume.label) files.splice(i, 1);
       }
+      for (const key of [...dirTags.keys()]) {
+        if (key.startsWith(`${volume.label}\u0000`)) dirTags.delete(key);
+      }
       treeLevels.delete(volume.label);
       if (lastRun?.volume_label === volume.label) setRun(null);
       return delay(undefined as T);
     }
+    case "file_tags": {
+      const id = args.file_id ?? args.fileId;
+      const file = files.find((f) => f.id === id);
+      return delay(sortedTags(file?.tags ?? []) as T);
+    }
+    case "add_file_tag": {
+      const id = args.file_id ?? args.fileId;
+      const file = files.find((f) => f.id === id);
+      const tag = normalizeMockTag(String(args.name ?? ""));
+      if (file !== undefined && tag !== "" && !file.tags.some((t) => t.toLowerCase() === tag.toLowerCase())) {
+        file.tags.push(tag);
+      }
+      return delay(sortedTags(file?.tags ?? []) as T);
+    }
+    case "remove_file_tag": {
+      const id = args.file_id ?? args.fileId;
+      const file = files.find((f) => f.id === id);
+      const tag = normalizeMockTag(String(args.name ?? "")).toLowerCase();
+      if (file !== undefined) file.tags = file.tags.filter((t) => t.toLowerCase() !== tag);
+      return delay(sortedTags(file?.tags ?? []) as T);
+    }
+    case "dir_tags": {
+      const id = args.dir_id ?? args.dirId;
+      const dir = id === undefined ? null : findMockDir(id);
+      return delay(sortedTags(dir === null ? [] : (dirTags.get(dirTagKey(dir.volume, dir.path)) ?? [])) as T);
+    }
+    case "add_dir_tag": {
+      const id = args.dir_id ?? args.dirId;
+      const dir = id === undefined ? null : findMockDir(id);
+      const tag = normalizeMockTag(String(args.name ?? ""));
+      if (dir !== null && tag !== "") {
+        const key = dirTagKey(dir.volume, dir.path);
+        const current = dirTags.get(key) ?? [];
+        if (!current.some((t) => t.toLowerCase() === tag.toLowerCase())) {
+          dirTags.set(key, [...current, tag]);
+          const built = treeLevels.get(dir.volume);
+          const level = built?.byPath.get(dir.path);
+          if (level !== undefined) {
+            const node = level.dirs.find((d) => d.id === id);
+            if (node !== undefined) node.tags = sortedTags([...node.tags, tag]);
+          }
+        }
+      }
+      return delay(sortedTags(dir === null ? [] : (dirTags.get(dirTagKey(dir.volume, dir.path)) ?? [])) as T);
+    }
+    case "remove_dir_tag": {
+      const id = args.dir_id ?? args.dirId;
+      const dir = id === undefined ? null : findMockDir(id);
+      const tag = normalizeMockTag(String(args.name ?? "")).toLowerCase();
+      if (dir !== null) {
+        const key = dirTagKey(dir.volume, dir.path);
+        dirTags.set(
+          key,
+          (dirTags.get(key) ?? []).filter((t) => t.toLowerCase() !== tag),
+        );
+        const built = treeLevels.get(dir.volume);
+        const level = built?.byPath.get(dir.path);
+        if (level !== undefined) {
+          const node = level.dirs.find((d) => d.id === id);
+          if (node !== undefined) node.tags = node.tags.filter((t) => t.toLowerCase() !== tag);
+        }
+      }
+      return delay(sortedTags(dir === null ? [] : (dirTags.get(dirTagKey(dir.volume, dir.path)) ?? [])) as T);
+    }
+    case "list_tags":
+      return delay(allMockTags() as T);
     case "list_duplicates": {
       const groups = new Map<string, DuplicateGroup>();
       for (const f of files) {
@@ -433,7 +592,7 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
       return delay([...groups.values()].filter((g) => g.count > 1).slice(0, args.limit ?? 100) as T);
     }
     case "file_duplicates": {
-      const f = files.find((x) => x.id === args.file_id);
+      const f = files.find((x) => x.id === (args.file_id ?? args.fileId));
       const rows: FileDuplicate[] =
         f && f.blake3
           ? files
@@ -470,6 +629,7 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
             audio_json: null,
             image_json: null,
             container_path: null,
+            tags: [],
           });
         }
       }
@@ -614,6 +774,35 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
         files: level.files,
         files_total: level.files.length,
         dirs_total: level.dirs.length,
+      } as T);
+    }
+    case "tree_path": {
+      const id = args.file_id ?? args.fileId;
+      const file = files.find((f) => f.id === id);
+      if (file === undefined) return delay(null as T);
+      const summary = volumeSummaries().find((v) => v.label === file.volume);
+      if (summary === undefined) return delay(null as T);
+      let built = treeLevels.get(file.volume);
+      if (built === undefined) {
+        built = buildTreeLevels(file.volume);
+        treeLevels.set(file.volume, built);
+      }
+      const pathToId = new Map<string, number>();
+      for (const [dirId, path] of built.pathOfId) pathToId.set(path, dirId);
+      const chain: string[] = [];
+      let p = file.path === "/" ? "" : file.path;
+      while (p !== "") {
+        chain.push(p);
+        const cut = p.lastIndexOf("/");
+        p = cut <= 0 ? "" : p.slice(0, cut);
+      }
+      chain.reverse();
+      const dirIds = [0, ...chain.map((path) => pathToId.get(path)).filter((v): v is number => v !== undefined)];
+      return delay({
+        volume_label: summary.label,
+        volume_serial: summary.serial,
+        dir_ids: dirIds,
+        file_id: file.id,
       } as T);
     }
     case "recover_stale_scans": {

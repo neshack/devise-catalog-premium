@@ -1,10 +1,15 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fileKind, formatBytes, formatCount, formatDate } from "../lib/format";
 import { flattenTree, TREE_ROOT } from "../lib/tree";
+import type { TreeDir, TreeFile } from "../lib/types";
 import { useCatalog } from "../stores/catalog";
-import { IconChevron, IconFolder, IconSearch, IconSpinner, KindIcon } from "./icons";
+import ContextMenu from "./ContextMenu";
+import TagDialog, { type TagTarget } from "./TagDialog";
+import { IconChevron, IconFile, IconFolder, IconSearch, IconSpinner, IconTag, KindIcon } from "./icons";
 import { EmptyState } from "./EmptyState";
+
+type TreeMenu = { x: number; y: number; dir: TreeDir | null; file: TreeFile | null };
 
 /** Height of one tree line, shared with the CSS. */
 const ROW_HEIGHT = 30;
@@ -16,7 +21,10 @@ const ROW_HEIGHT = 30;
  * volume with a million files costs one level, not a million rows.
  */
 export default function TreeView() {
-  const { volumeFilter, tree, loadTree, toggleTreeDir, selected, selectTreeFile } = useCatalog();
+  const { volumeFilter, tree, loadTree, toggleTreeDir, selected, selectTreeFile, updateTreeTags } =
+    useCatalog();
+  const [menu, setMenu] = useState<TreeMenu | null>(null);
+  const [tagTarget, setTagTarget] = useState<TagTarget | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const rows = useMemo(() => flattenTree(tree.children, tree.expanded), [tree.children, tree.expanded]);
 
@@ -28,8 +36,18 @@ export default function TreeView() {
   });
 
   useEffect(() => {
+    if (volumeFilter === null) return;
+    // `revealInTree` arrives with the whole chain already loaded; reloading
+    // here would collapse it back to the root.
+    if (
+      tree.children[TREE_ROOT] !== undefined ||
+      tree.loading !== null ||
+      tree.error !== null
+    ) {
+      return;
+    }
     void loadTree();
-  }, [loadTree, volumeFilter]);
+  }, [loadTree, volumeFilter, tree.children, tree.loading, tree.error]);
 
   if (volumeFilter === null) {
     return (
@@ -117,6 +135,10 @@ export default function TreeView() {
                     paddingLeft: 16 + row.depth * 16,
                   }}
                   onClick={() => void toggleTreeDir(key, dir.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setMenu({ x: e.clientX, y: e.clientY, dir, file: null });
+                  }}
                 >
                   <span className="tree-row__mark" aria-hidden="true">
                     {loading ? (
@@ -130,6 +152,16 @@ export default function TreeView() {
                     <span className="tree-row__text" title={dir.name}>
                       {dir.name}
                     </span>
+                    {dir.tags.slice(0, 2).map((tag) => (
+                      <span className="tree-row__tag tree-row__tag--tag" key={tag}>
+                        #{tag}
+                      </span>
+                    ))}
+                    {dir.tags.length > 2 && (
+                      <span className="tree-row__tag tree-row__tag--tag">
+                        +{dir.tags.length - 2}
+                      </span>
+                    )}
                   </span>
                   <span className="tree-row__count">
                     {inside === 0
@@ -157,6 +189,10 @@ export default function TreeView() {
                 }}
                 title={file.container_path === null ? file.name : `${file.container_path}/${file.name}`}
                 onClick={() => void selectTreeFile(file.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMenu({ x: e.clientX, y: e.clientY, dir: null, file });
+                }}
               >
                 <span className="tree-row__mark" aria-hidden="true" />
                 <span className="tree-row__name">
@@ -167,6 +203,16 @@ export default function TreeView() {
                       {file.container_path.split("/").pop() ?? file.container_path}
                     </span>
                   )}
+                  {file.tags.slice(0, 2).map((tag) => (
+                    <span className="tree-row__tag tree-row__tag--tag" key={tag}>
+                      #{tag}
+                    </span>
+                  ))}
+                  {file.tags.length > 2 && (
+                    <span className="tree-row__tag tree-row__tag--tag">
+                      +{file.tags.length - 2}
+                    </span>
+                  )}
                 </span>
                 <span className="tree-row__count">{formatDate(file.mtime)}</span>
                 <span className="tree-row__size">{formatBytes(file.size)}</span>
@@ -175,6 +221,51 @@ export default function TreeView() {
           })}
         </div>
       </div>
+
+      {menu !== null && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={
+            menu.dir !== null
+              ? [
+                  {
+                    label: "Etiquetar carpeta…",
+                    icon: <IconTag size={14} />,
+                    onSelect: () =>
+                      setTagTarget({ kind: "dir", id: menu.dir!.id, name: menu.dir!.name }),
+                  },
+                  {
+                    label: "Expandir o contraer",
+                    icon: <IconFolder size={14} />,
+                    onSelect: () => void toggleTreeDir(String(menu.dir!.id), menu.dir!.id),
+                  },
+                ]
+              : [
+                  {
+                    label: "Ver detalles",
+                    icon: <IconFile size={14} />,
+                    onSelect: () => void selectTreeFile(menu.file!.id),
+                  },
+                  {
+                    label: "Etiquetar archivo…",
+                    icon: <IconTag size={14} />,
+                    onSelect: () =>
+                      setTagTarget({ kind: "file", id: menu.file!.id, name: menu.file!.name }),
+                  },
+                ]
+          }
+        />
+      )}
+
+      {tagTarget !== null && (
+        <TagDialog
+          target={tagTarget}
+          onClose={() => setTagTarget(null)}
+          onChanged={(tags) => updateTreeTags({ kind: tagTarget.kind, id: tagTarget.id }, tags)}
+        />
+      )}
     </>
   );
 }

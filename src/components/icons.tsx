@@ -160,6 +160,16 @@ export const IconMonitor = (p: IconProps) =>
     p.className,
   );
 
+export const IconTag = (p: IconProps) =>
+  base(
+    p.size,
+    <>
+      <path d="M20 13 13 20a1.8 1.8 0 0 1-2.5 0L4 13.5V4h9.5L20 10.5a1.8 1.8 0 0 1 0 2.5Z" />
+      <circle cx="8.5" cy="8.5" r="1.2" />
+    </>,
+    p.className,
+  );
+
 const KIND_ICON: Record<FileKind, (p: IconProps) => JSX.Element> = {
   audio: IconMusic,
   image: IconImage,

@@ -33,8 +33,13 @@ stick, and search at any time.
   query, so opening a million-file volume costs one level, not a million rows.
 - **Archive entries** from ZIP central directories, indexed without extracting.
 - **Duplicates** by BLAKE3 content hash across volumes.
-- **Inspector** with path, size, date, hash, audio metadata (ID3 via `lofty`)
-  and image metadata (EXIF via `rexif`).
+- **Tags** on files and folders, searchable with `#tag` or `tag:tag`; a folder
+  tag applies to everything inside it.
+- **Locate in tree** from any result's context menu, opening every folder above
+  it and leaving the file selected.
+- **Inspector** with the full path, size, date, hash, audio metadata (ID3 via
+  `lofty`) and image metadata (EXIF via `rexif`). Duplicate paths are shown in
+  full, not truncated.
 - **Resilient scans**: pause, resume, cancel, and continue after the process
   was killed or the machine suspended.
 - **Safe volume removal**: typing the label is required; the disk is never
@@ -50,6 +55,10 @@ stick, and search at any time.
 </p>
 <p align="center">
   <img src="docs/images/search.png" alt="Search results" width="49%" />
+  <img src="docs/images/context-menu.png" alt="Result context menu" width="49%" />
+</p>
+<p align="center">
+  <img src="docs/images/tags.png" alt="File tags and full paths" width="49%" />
   <img src="docs/images/delete-volume.png" alt="Safe volume removal" width="49%" />
 </p>
 
@@ -142,6 +151,8 @@ Search examples:
 informe size:>5MB
 ext:{mp3,flac} size:<10MB
 volume:"Backup-12"
+tag:playa
+#familia
 Beatles
 ```
 
@@ -152,7 +163,7 @@ is in Spanish; code, comments and commits are in English.
 
 ```text
 src-tauri/
-  src/main.rs, lib.rs, commands/{scan,search,tree,export,system}.rs
+  src/main.rs, lib.rs, commands/{scan,search,tree,tags,export,system}.rs
   crates/core-db       SQLite WAL + FTS5, differential upsert, tree queries
   crates/core-scanner  cancellable jwalk walk with progress + error reporting
   crates/core-hash     BLAKE3 partial/full hashing

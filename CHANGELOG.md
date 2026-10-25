@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] — 2026-10-25
+
+### Added
+
+- Tags on files and folders. Folder tags are inherited by their subtree when
+  searching. Search syntax: `tag:playa` or `#playa`.
+- Result context menu with **Ubicar en el árbol**, which opens every folder
+  above the file and leaves it selected.
+- Full paths in the inspector and in the duplicate list, wrapped instead of
+  truncated.
+
+### Fixed
+
+- Volume removal runs off the main thread, so a large cascade no longer freezes
+  the window. The dialog stays open if the removal fails.
+- `files(volume_id)` is indexed: the same 100k-file cascade dropped from ~3.6 s
+  to ~1.0 s on the development machine.
+- Searching from the tree opens the results screen; selecting a volume with no
+  query opens the tree instead of an empty results list.
+- A pending search can no longer pull the user back to results while
+  "Ubicar en el árbol" is opening the tree.
+
 ## [0.3.0] — 2026-10-25
 
 ### Changed

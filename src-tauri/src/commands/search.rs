@@ -85,6 +85,7 @@ pub fn parse_raw_query(raw: &str) -> ParsedQuery {
     let mut min_size: Option<i64> = None;
     let mut max_size: Option<i64> = None;
     let mut volume: Option<String> = None;
+    let mut tags: Vec<String> = Vec::new();
     let mut fts_terms: Vec<String> = Vec::new();
 
     for tok in split_tokens(raw) {
@@ -92,6 +93,19 @@ pub fn parse_raw_query(raw: &str) -> ParsedQuery {
             continue;
         }
         let low = tok.to_lowercase();
+        // `tag:playa` and the shorthand `#playa` are the same filter.
+        let tag_value = if low.starts_with("tag:") {
+            Some(&tok[4..])
+        } else {
+            tok.strip_prefix('#')
+        };
+        if let Some(rest) = tag_value {
+            let tag = rest.trim().trim_matches('"').trim();
+            if !tag.is_empty() {
+                tags.push(tag.to_string());
+                continue;
+            }
+        }
         if let Some(rest) = low.strip_prefix("*.") {
             // Leading `*.ext` (also accepted mid-query): extension filter.
             let ext = rest.trim().to_string();
@@ -163,6 +177,7 @@ pub fn parse_raw_query(raw: &str) -> ParsedQuery {
         max_size,
         volume,
         volume_serial: None,
+        tags,
     }
 }
 
@@ -221,14 +236,21 @@ pub fn list_volumes(db_path: String) -> Result<Vec<core_db::VolumeSummary>, Stri
 }
 
 /// Forget a volume. The catalog loses its rows; the disk keeps every file.
+///
+/// Cascading a large volume can take seconds: it runs off the main thread so
+/// the window keeps painting and the dialog can honestly say "Eliminando…".
 #[tauri::command]
-pub fn delete_volume(db_path: String, volume_id: i64) -> Result<(), String> {
-    let db = Db::open(Path::new(&db_path)).map_err(|e| e.to_string())?;
-    let removed = db.delete_volume(volume_id).map_err(|e| e.to_string())?;
-    if removed == 0 {
-        return Err("el volumen ya no existe en el catálogo".to_string());
-    }
-    Ok(())
+pub async fn delete_volume(db_path: String, volume_id: i64) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = Db::open(Path::new(&db_path)).map_err(|e| e.to_string())?;
+        let removed = db.delete_volume(volume_id).map_err(|e| e.to_string())?;
+        if removed == 0 {
+            return Err("el volumen ya no existe en el catálogo".to_string());
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("delete task failed: {e}"))?
 }
 
 #[tauri::command]
@@ -276,6 +298,20 @@ mod tests {
     fn parses_ext_brace_list() {
         let q = parse_raw_query("ext:{mp3,flac}");
         assert_eq!(q.exts, vec!["mp3".to_string(), "flac".to_string()]);
+        assert!(q.fts.is_empty());
+    }
+
+    #[test]
+    fn parses_tags_with_colon_and_hash() {
+        let q = parse_raw_query("tag:playa #familia tag:\"fin de semana\"");
+        assert_eq!(
+            q.tags,
+            vec![
+                "playa".to_string(),
+                "familia".to_string(),
+                "fin de semana".to_string()
+            ]
+        );
         assert!(q.fts.is_empty());
     }
 }

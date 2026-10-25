@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import { flattenTree, TREE_ROOT } from "./tree";
 import type { TreeChildren, TreeDir, TreeFile } from "./types";
 
-const dir = (id: number, name: string): TreeDir => ({ id, name, files: 0, dirs: 0, size: 0 });
+const dir = (id: number, name: string): TreeDir => ({
+  id,
+  name,
+  files: 0,
+  dirs: 0,
+  size: 0,
+  tags: [],
+});
 const file = (id: number, name: string): TreeFile => ({
   id,
   name,
@@ -10,6 +17,7 @@ const file = (id: number, name: string): TreeFile => ({
   size: 10,
   mtime: 0,
   container_path: null,
+  tags: [],
 });
 const level = (dirs: TreeDir[], files: TreeFile[]): TreeChildren => ({
   dirs,
