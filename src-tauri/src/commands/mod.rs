@@ -4,3 +4,4 @@ pub mod search;
 pub mod system;
 pub mod tags;
 pub mod tree;
+pub mod volumes;

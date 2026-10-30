@@ -3,7 +3,15 @@ import { formatBytes, formatCount, formatDate } from "../lib/format";
 import type { VolumeSummary } from "../lib/types";
 import { useCatalog } from "../stores/catalog";
 import DeleteVolumeDialog from "./DeleteVolumeDialog";
-import { IconScan, IconTrash } from "./icons";
+import VolumeMetaDialog from "./VolumeMetaDialog";
+import {
+  IconDisc,
+  IconEdit,
+  IconPanelCollapse,
+  IconPanelExpand,
+  IconScan,
+  IconTrash,
+} from "./icons";
 
 /**
  * Etiqueta de activo del volumen: código estable derivado de (label, serial),
@@ -20,9 +28,34 @@ function volumeTag(label: string, serial: string): string {
   return `VOL-${((h >>> 16) & 0xffff).toString(16).toUpperCase().padStart(4, "0")}`;
 }
 
+/** Two letters that still say which volume this is when the panel is a rail. */
+function monogram(label: string): string {
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return label.trim().slice(0, 2).toUpperCase();
+}
+
+function volumeTitle(v: VolumeSummary): string {
+  const lines = [
+    `${v.label} — ${v.serial}`,
+    `${formatCount(v.file_count)} archivos · ${formatBytes(v.total_size)}`,
+  ];
+  if (v.description !== null) lines.push(v.description);
+  return lines.join("\n");
+}
+
 export default function VolumeSidebar() {
-  const { volumes, volumesError, volumeFilter, setVolumeFilter, setScanOpen } = useCatalog();
+  const {
+    volumes,
+    volumesError,
+    volumeFilter,
+    setVolumeFilter,
+    setScanOpen,
+    sidebarCollapsed,
+    toggleSidebar,
+  } = useCatalog();
   const [toDelete, setToDelete] = useState<VolumeSummary | null>(null);
+  const [toEdit, setToEdit] = useState<VolumeSummary | null>(null);
   const lastScan = volumes.reduce<number | null>(
     (acc, v) => (acc === null || (v.indexed_at ?? 0) > acc ? v.indexed_at : acc),
     null,
@@ -33,12 +66,26 @@ export default function VolumeSidebar() {
 
   return (
     <>
-      <aside className="sidebar" aria-label="Volúmenes del catálogo">
+      <aside
+        className={`sidebar${sidebarCollapsed ? " is-rail" : ""}`}
+        aria-label="Volúmenes del catálogo"
+        id="volume-panel"
+      >
         <div className="sidebar__head">
-          <span className="sidebar__title">Volúmenes</span>
-          <span className="sidebar__title mono">
-            {String(volumes.length).padStart(2, "0")}
-          </span>
+          {!sidebarCollapsed && <span className="sidebar__title">Volúmenes</span>}
+          {!sidebarCollapsed && (
+            <span className="sidebar__title mono">{String(volumes.length).padStart(2, "0")}</span>
+          )}
+          <button
+            className="sidebar__toggle"
+            onClick={toggleSidebar}
+            aria-expanded={!sidebarCollapsed}
+            aria-controls="volume-panel"
+            aria-label={sidebarCollapsed ? "Expandir panel de volúmenes" : "Contraer panel de volúmenes"}
+            title={sidebarCollapsed ? "Expandir panel de volúmenes" : "Contraer panel de volúmenes"}
+          >
+            {sidebarCollapsed ? <IconPanelExpand size={15} /> : <IconPanelCollapse size={15} />}
+          </button>
         </div>
 
         <div className="side-items">
@@ -46,15 +93,27 @@ export default function VolumeSidebar() {
             className={`side-item${volumeFilter === null ? " is-active" : ""}`}
             onClick={() => setVolumeFilter(null)}
             aria-pressed={volumeFilter === null}
+            aria-label="Todos los volúmenes"
+            title={`Todos los volúmenes — ${formatCount(
+              volumes.reduce((a, v) => a + v.file_count, 0),
+            )} archivos`}
           >
             <span className="side-item__led" aria-hidden="true" />
-            <span className="side-item__tag">ALL</span>
-            <span className="side-item__body">
-              <span className="side-item__label">Todos los volúmenes</span>
-              <span className="side-item__meta">
-                {formatCount(volumes.reduce((a, v) => a + v.file_count, 0))} arch
-              </span>
+            <span className="side-item__media">
+              {sidebarCollapsed ? (
+                <IconDisc size={18} />
+              ) : (
+                <span className="side-item__tag">ALL</span>
+              )}
             </span>
+            {!sidebarCollapsed && (
+              <span className="side-item__body">
+                <span className="side-item__label">Todos los volúmenes</span>
+                <span className="side-item__meta">
+                  {formatCount(volumes.reduce((a, v) => a + v.file_count, 0))} arch
+                </span>
+              </span>
+            )}
           </button>
 
           {volumesError !== null && (
@@ -73,45 +132,83 @@ export default function VolumeSidebar() {
                     setVolumeFilter(active ? null : { label: v.label, serial: v.serial })
                   }
                   aria-pressed={active}
-                  title={`${v.label} — ${v.serial}`}
+                  aria-label={`${v.label} — ${v.serial}${
+                    v.description !== null ? `. ${v.description}` : ""
+                  }`}
+                  title={volumeTitle(v)}
                 >
                   <span className="side-item__led" aria-hidden="true" />
-                  <span className="side-item__tag">{volumeTag(v.label, v.serial)}</span>
-                  <span className="side-item__body">
-                    <span className="side-item__label">{v.label}</span>
-                    <span className="side-item__meta">
-                      {formatCount(v.file_count)} arch · {formatBytes(v.total_size)}
-                    </span>
+                  <span className={`side-item__media${v.cover !== null ? " has-cover" : ""}`}>
+                    {v.cover !== null ? (
+                      <img src={v.cover} alt="" />
+                    ) : (
+                      <span className="side-item__tag">
+                        {sidebarCollapsed ? monogram(v.label) : volumeTag(v.label, v.serial)}
+                      </span>
+                    )}
                   </span>
+                  {!sidebarCollapsed && (
+                    <span className="side-item__body">
+                      <span className="side-item__label">{v.label}</span>
+                      <span className="side-item__meta">
+                        {formatCount(v.file_count)} arch · {formatBytes(v.total_size)}
+                      </span>
+                      {v.description !== null && (
+                        <span className="side-item__desc">{v.description}</span>
+                      )}
+                    </span>
+                  )}
                 </button>
-                <button
-                  className="side-item__delete"
-                  aria-label={`Eliminar volumen ${v.label}`}
-                  title="Eliminar del catálogo…"
-                  onClick={() => setToDelete(v)}
-                >
-                  <IconTrash size={13} />
-                </button>
+                {!sidebarCollapsed && (
+                  <div className="side-item__actions">
+                    <button
+                      className="side-item__action"
+                      aria-label={`Editar volumen ${v.label}`}
+                      title="Editar descripción e imagen…"
+                      onClick={() => setToEdit(v)}
+                    >
+                      <IconEdit size={13} />
+                    </button>
+                    <button
+                      className="side-item__action side-item__action--danger"
+                      aria-label={`Eliminar volumen ${v.label}`}
+                      title="Eliminar del catálogo…"
+                      onClick={() => setToDelete(v)}
+                    >
+                      <IconTrash size={13} />
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
 
         <div className="sidebar__foot">
-          <button className="btn btn--primary" onClick={() => setScanOpen(true)}>
+          <button
+            className="btn btn--primary"
+            onClick={() => setScanOpen(true)}
+            aria-label="Escanear volumen"
+            title="Escanear volumen"
+          >
             <IconScan size={14} />
-            Escanear volumen
+            {!sidebarCollapsed && "Escanear volumen"}
           </button>
-          <span className="side-item__meta">
-            {lastScan !== null
-              ? `Último escaneo: ${formatDate(lastScan)}`
-              : "Escanea tu primer disco o USB para empezar."}
-          </span>
+          {!sidebarCollapsed && (
+            <span className="side-item__meta">
+              {lastScan !== null
+                ? `Último escaneo: ${formatDate(lastScan)}`
+                : "Escanea tu primer disco o USB para empezar."}
+            </span>
+          )}
         </div>
       </aside>
 
       {toDelete !== null && (
         <DeleteVolumeDialog volume={toDelete} onClose={() => setToDelete(null)} />
+      )}
+      {toEdit !== null && (
+        <VolumeMetaDialog volume={toEdit} onClose={() => setToEdit(null)} />
       )}
     </>
   );

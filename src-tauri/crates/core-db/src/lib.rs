@@ -31,6 +31,21 @@ pub struct VolumeSummary {
     pub indexed_at: Option<i64>,
     pub file_count: i64,
     pub total_size: i64,
+    /// What the volume holds, in the user's words. `None` when never written.
+    pub description: Option<String>,
+    /// Catalog image as a `data:image/...` URL, small enough to live in the
+    /// catalog file. `None` when the volume has no cover.
+    pub cover: Option<String>,
+}
+
+/// The parts of a volume that identify it on screen, cover included.
+#[derive(Debug, PartialEq, Clone, serde::Serialize)]
+pub struct VolumeMeta {
+    pub id: i64,
+    pub label: String,
+    pub serial: String,
+    pub description: Option<String>,
+    pub cover: Option<String>,
 }
 
 #[derive(Debug)]
@@ -115,6 +130,9 @@ pub struct ExportRow {
     pub name: String,
     pub size: i64,
     pub volume: String,
+    /// Full location as the user would look for it: the folder path plus the
+    /// name, and the archive it lives in when the row is a container entry.
+    pub path: String,
 }
 
 #[derive(Debug, PartialEq)]
@@ -259,6 +277,33 @@ fn lock_err() -> anyhow::Error {
     anyhow::anyhow!("db lock poisoned")
 }
 
+/// Where a row actually lives, in the words a person would use: the folder
+/// path plus the file name, and the archive when the row is an entry inside
+/// one (the scanner stores the entry path in `name`).
+fn export_location(folder: &str, name: &str, container: Option<&str>) -> String {
+    match container {
+        Some(archive) => format!("{folder}/{archive} ▸ {name}"),
+        None => format!("{folder}/{name}"),
+    }
+}
+
+/// Add a column to an existing catalog. `CREATE TABLE IF NOT EXISTS` covers
+/// fresh catalogs; this is how a catalog created by an older release learns
+/// about the columns added since (SQLite has no `ADD COLUMN IF NOT EXISTS`).
+fn ensure_column(conn: &Connection, table: &str, column: &str, decl: &str) -> Result<()> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let existing = stmt
+        .query_map([], |r| r.get::<_, String>(1))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    drop(stmt);
+    if !existing.iter().any(|c| c == column) {
+        conn.execute_batch(&format!(
+            "ALTER TABLE {table} ADD COLUMN {column} {decl}"
+        ))?;
+    }
+    Ok(())
+}
+
 impl Db {
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
@@ -270,6 +315,8 @@ impl Db {
         // locked" the moment it arrives.
         conn.busy_timeout(std::time::Duration::from_secs(10))?;
         conn.execute_batch(include_str!("schema.sql"))?;
+        ensure_column(&conn, "volumes", "description", "TEXT")?;
+        ensure_column(&conn, "volumes", "cover", "TEXT")?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -303,7 +350,8 @@ impl Db {
     pub fn list_volumes(&self) -> Result<Vec<VolumeSummary>> {
         let c = self.conn.lock().map_err(|_| lock_err())?;
         let mut stmt = c.prepare(
-            "SELECT v.id, v.label, v.serial, v.indexed_at, COUNT(f.id), COALESCE(SUM(f.size), 0) \
+            "SELECT v.id, v.label, v.serial, v.indexed_at, COUNT(f.id), COALESCE(SUM(f.size), 0), \
+             v.description, v.cover \
              FROM volumes v LEFT JOIN files f ON f.volume_id = v.id \
              GROUP BY v.id ORDER BY v.indexed_at DESC, v.label ASC",
         )?;
@@ -316,10 +364,49 @@ impl Db {
                     indexed_at: r.get(3)?,
                     file_count: r.get(4)?,
                     total_size: r.get(5)?,
+                    description: r.get(6)?,
+                    cover: r.get(7)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    /// The identifying fields of one volume, cover included.
+    pub fn volume_meta(&self, id: i64) -> Result<Option<VolumeMeta>> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let mut stmt = c.prepare(
+            "SELECT id, label, serial, description, cover FROM volumes WHERE id=?1 LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map(params![id], |r| {
+            Ok(VolumeMeta {
+                id: r.get(0)?,
+                label: r.get(1)?,
+                serial: r.get(2)?,
+                description: r.get(3)?,
+                cover: r.get(4)?,
+            })
+        })?;
+        Ok(rows.next().transpose()?)
+    }
+
+    /// Write (or clear, with `None`) the description of a volume.
+    pub fn set_volume_description(&self, id: i64, description: Option<&str>) -> Result<usize> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let desc = description.map(str::trim).filter(|d| !d.is_empty());
+        Ok(c.execute(
+            "UPDATE volumes SET description=?2 WHERE id=?1",
+            params![id, desc],
+        )?)
+    }
+
+    /// Attach (or remove, with `None`) the catalog image of a volume.
+    pub fn set_volume_cover(&self, id: i64, cover: Option<&str>) -> Result<usize> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        Ok(c.execute(
+            "UPDATE volumes SET cover=?2 WHERE id=?1",
+            params![id, cover],
+        )?)
     }
 
     /// Remove a volume from the catalog: its files, folders, scan history and
@@ -617,21 +704,55 @@ impl Db {
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
     }
-    pub fn export_rows(&self) -> Result<Vec<ExportRow>> {
+    /// How many files and bytes the selection covers, without reading rows.
+    pub fn export_stats(&self, volume_id: Option<i64>) -> Result<(i64, i64)> {
         let c = self.conn.lock().map_err(|_| lock_err())?;
-        let mut stmt = c.prepare(
-            "SELECT f.name, f.size, v.label FROM files f JOIN volumes v ON v.id = f.volume_id ORDER BY f.name",
+        let (count, bytes) = c.query_row(
+            "SELECT COUNT(*), COALESCE(SUM(size), 0) FROM files \
+             WHERE (?1 IS NULL OR volume_id = ?1)",
+            params![volume_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
-        let rows = stmt
-            .query_map([], |r| {
-                Ok(ExportRow {
-                    name: r.get(0)?,
-                    size: r.get(1)?,
-                    volume: r.get(2)?,
-                })
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        Ok(rows)
+        Ok((count, bytes))
+    }
+
+    /// Every indexed file, optionally limited to one volume, with the location
+    /// a person would look for it at (folder + name, or archive ▸ entry).
+    /// `limit` keeps a navigable page cheap on a catalog of half a million
+    /// rows; CSV and JSON ask for everything.
+    pub fn export_rows(
+        &self,
+        volume_id: Option<i64>,
+        limit: Option<i64>,
+    ) -> Result<Vec<ExportRow>> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        let mut sql = format!(
+            "{DIR_PATH_CTE} SELECT f.name, f.size, v.label, COALESCE(NULLIF(dp.p, ''), ''), \
+             f.container_path \
+             FROM files f JOIN volumes v ON v.id = f.volume_id \
+             LEFT JOIN dp ON dp.id = f.dir_id \
+             WHERE (?1 IS NULL OR f.volume_id = ?1) ORDER BY f.name, v.label"
+        );
+        if limit.is_some() {
+            sql.push_str(" LIMIT ?2");
+        }
+        let mut stmt = c.prepare(&sql)?;
+        let map = |r: &rusqlite::Row<'_>| -> rusqlite::Result<ExportRow> {
+            let name: String = r.get(0)?;
+            let folder: String = r.get(3)?;
+            let container: Option<String> = r.get(4)?;
+            Ok(ExportRow {
+                path: export_location(&folder, &name, container.as_deref()),
+                name,
+                size: r.get(1)?,
+                volume: r.get(2)?,
+            })
+        };
+        let rows: std::result::Result<Vec<ExportRow>, rusqlite::Error> = match limit {
+            Some(n) => stmt.query_map(params![volume_id, n], map)?.collect(),
+            None => stmt.query_map(params![volume_id], map)?.collect(),
+        };
+        Ok(rows?)
     }
 
     /// Open a scan attempt. The row exists before a single file is read so an

@@ -53,6 +53,7 @@ export default function App() {
     hits,
     searchStatus,
     elapsedMs,
+    sidebarCollapsed,
   } = useCatalog();
   const { init: initTheme } = useTheme();
 
@@ -98,7 +99,7 @@ export default function App() {
 
       <ReadingStrip />
 
-      <div className="app-body">
+      <div className={`app-body${sidebarCollapsed ? " is-rail" : ""}`}>
         <VolumeSidebar />
 
         <main className="app-main">

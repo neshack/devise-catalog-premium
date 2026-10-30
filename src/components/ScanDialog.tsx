@@ -1,24 +1,44 @@
 import { useEffect, useRef, useState } from "react";
+import { pickScanFolder } from "../lib/cover";
 import { formatBytes, formatCount, formatEta, percentOf } from "../lib/format";
+import { isDemo } from "../lib/ipc";
 import { useCatalog } from "../stores/catalog";
-import { IconAlert, IconScan, IconSpinner, IconX } from "./icons";
+import VolumeCoverField from "./VolumeCoverField";
+import { IconAlert, IconFolder, IconScan, IconSpinner, IconX } from "./icons";
+
+/** A last path segment that reads as a volume name, not as a drive letter. */
+function suggestLabel(path: string): string {
+  const clean = path.replace(/[\\/]+$/, "");
+  const cut = Math.max(clean.lastIndexOf("/"), clean.lastIndexOf("\\"));
+  const base = clean.slice(cut + 1);
+  return /^[A-Za-z]:$/.test(base) ? `Disco ${base.slice(0, 1).toUpperCase()}` : base;
+}
 
 export default function ScanDialog() {
   const { scanOpen, setScanOpen, scan, runScan, cancelScan } = useCatalog();
   const [root, setRoot] = useState("");
   const [label, setLabel] = useState("");
   const [serial, setSerial] = useState("");
+  const [description, setDescription] = useState("");
+  const [cover, setCover] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
   const rootRef = useRef<HTMLInputElement>(null);
+  const labelRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (scanOpen) {
-      setError(null);
-      // prefill a sane default when opening again
-      if (root === "") setRoot("/media/");
+    if (!scanOpen) return;
+    setError(null);
+    // Opening "Escanear volumen" means starting one: the last report lives in
+    // the strip and a toast, not in a form that refuses to be filled again.
+    if (!useCatalog.getState().scan.running) {
+      setRoot("/media/");
+      setLabel("");
+      setSerial("");
+      setDescription("");
+      setCover(null);
       rootRef.current?.focus();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanOpen]);
 
   useEffect(() => {
@@ -38,7 +58,7 @@ export default function ScanDialog() {
     const r = root.trim();
     const l = label.trim();
     if (r === "") {
-      setError("Indica la carpeta raíz a escanear (p. ej. /media/backup o D:\\).");
+      setError("Indica la carpeta raíz a escanear o elígela con el botón de la carpeta.");
       return;
     }
     if (!/^(\/|[A-Za-z]:[\\/])/.test(r)) {
@@ -50,7 +70,26 @@ export default function ScanDialog() {
       return;
     }
     setError(null);
-    void runScan(r, l, serial.trim());
+    void runScan(r, l, serial.trim(), description, cover);
+  };
+
+  const chooseFolder = async () => {
+    setError(null);
+    setPicking(true);
+    try {
+      const picked = await pickScanFolder();
+      if (picked === null) return;
+      const hadLabel = label.trim() !== "";
+      setRoot(picked);
+      if (!hadLabel) {
+        setLabel(suggestLabel(picked));
+        labelRef.current?.focus();
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setPicking(false);
+    }
   };
 
   const running = scan.running;
@@ -60,7 +99,7 @@ export default function ScanDialog() {
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && !running && setScanOpen(false)}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label="Escanear volumen">
+      <div className="modal modal--scan" role="dialog" aria-modal="true" aria-label="Escanear volumen">
         <div className="modal__head">
           <IconScan size={18} />
           <span className="modal__title">Escanear volumen</span>
@@ -123,7 +162,7 @@ export default function ScanDialog() {
                     </div>
                   </div>
                   {scan.currentPath !== null && (
-                    <p className="form-field__help mono" title={scan.currentPath}>
+                    <p className="scan-path mono" title={scan.currentPath}>
                       {scan.currentPath}
                     </p>
                   )}
@@ -138,6 +177,20 @@ export default function ScanDialog() {
                     </p>
                   )}
                 </>
+              ) : scan.state === "failed" ? (
+                <p className="scan-summary scan-summary--error" role="alert">
+                  <IconAlert size={15} />
+                  <span>
+                    El escaneo se interrumpió
+                    {scan.error !== null ? `: ${scan.error}` : "."} Lo que ya estaba
+                    indexado sigue en el catálogo.
+                  </span>
+                </p>
+              ) : scan.state === "cancelled" ? (
+                <p className="scan-summary">
+                  Escaneo cancelado tras <strong>{formatCount(scan.lastCount ?? 0)}</strong>{" "}
+                  archivos. El volumen conserva lo que ya estaba indexado.
+                </p>
               ) : (
                 <p className="scan-summary">
                   Escaneo finalizado: <strong>{formatCount(scan.lastCount ?? 0)}</strong> archivos procesados.
@@ -149,48 +202,98 @@ export default function ScanDialog() {
             <>
               <div className="form-field">
                 <label className="form-field__label" htmlFor="scan-root">
-                  Carpeta raíz <span className="req">*</span>
+                  Unidad o carpeta raíz <span className="req">*</span>
                 </label>
-                <input
-                  id="scan-root"
-                  ref={rootRef}
-                  className="input input--mono"
-                  placeholder="/media/backup  ·  /mnt/nas/fotos  ·  D:\"
-                  value={root}
-                  onChange={(e) => setRoot(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && submit()}
-                  spellCheck={false}
-                />
-                <span className="form-field__help">Ruta absoluta del disco, USB, NAS o carpeta a indexar.</span>
+                <div className="input-row">
+                  <input
+                    id="scan-root"
+                    ref={rootRef}
+                    className="input input--mono"
+                    placeholder="/media/backup  ·  /mnt/nas/fotos  ·  D:\"
+                    value={root}
+                    onChange={(e) => setRoot(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && submit()}
+                    spellCheck={false}
+                  />
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => void chooseFolder()}
+                    disabled={picking || isDemo}
+                    title={
+                      isDemo
+                        ? "El diálogo del sistema sólo existe en la app de escritorio"
+                        : "Elegir la unidad en el diálogo del sistema"
+                    }
+                  >
+                    <IconFolder size={14} />
+                    {picking ? "Abriendo…" : "Elegir…"}
+                  </button>
+                </div>
+                <span className="form-field__help">
+                  {isDemo
+                    ? "En la app de escritorio este botón abre el diálogo del sistema; en la demo, escribe la ruta."
+                    : "Elige el disco, USB, NAS o carpeta. La ruta se toma del diálogo del sistema."}
+                </span>
               </div>
+
+              <div className="form-row">
+                <div className="form-field">
+                  <label className="form-field__label" htmlFor="scan-label">
+                    Etiqueta <span className="req">*</span>
+                  </label>
+                  <input
+                    id="scan-label"
+                    ref={labelRef}
+                    className="input"
+                    placeholder="Backup-12"
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && submit()}
+                  />
+                  <span className="form-field__help">Nombre con el que aparecerá en el catálogo.</span>
+                </div>
+                <div className="form-field">
+                  <label className="form-field__label" htmlFor="scan-serial">
+                    Nº de serie <span className="form-field__optional">(opcional)</span>
+                  </label>
+                  <input
+                    id="scan-serial"
+                    className="input input--mono"
+                    placeholder="VOL-001"
+                    value={serial}
+                    onChange={(e) => setSerial(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && submit()}
+                  />
+                  <span className="form-field__help">Se genera automáticamente si lo dejas vacío.</span>
+                </div>
+              </div>
+
               <div className="form-field">
-                <label className="form-field__label" htmlFor="scan-label">
-                  Etiqueta <span className="req">*</span>
+                <label className="form-field__label" htmlFor="scan-description">
+                  Descripción <span className="form-field__optional">(opcional)</span>
                 </label>
-                <input
-                  id="scan-label"
-                  className="input"
-                  placeholder="Backup-12"
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && submit()}
+                <textarea
+                  id="scan-description"
+                  className="input input--area"
+                  rows={2}
+                  maxLength={280}
+                  placeholder="Qué guarda este volumen: fotos de 2016, instaladores, copias del NAS…"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                 />
-                <span className="form-field__help">Nombre con el que aparecerá en el catálogo.</span>
+                <span className="form-field__help">
+                  Ayuda a reconocerlo sin insertarlo. También puedes cambiarla después.
+                </span>
               </div>
+
               <div className="form-field">
-                <label className="form-field__label" htmlFor="scan-serial">
-                  Nº de serie <span className="form-field__optional">(opcional)</span>
-                </label>
-                <input
-                  id="scan-serial"
-                  className="input input--mono"
-                  placeholder="VOL-001"
-                  value={serial}
-                  onChange={(e) => setSerial(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && submit()}
-                />
-                <span className="form-field__help">Se genera automáticamente si lo dejas vacío.</span>
+                <span className="form-field__label">
+                  Imagen del volumen <span className="form-field__optional">(opcional)</span>
+                </span>
+                <VolumeCoverField value={cover} onChange={setCover} />
               </div>
+
               {error !== null && (
                 <p className="form-field__error" role="alert">
                   {error}

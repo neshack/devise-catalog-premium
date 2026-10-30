@@ -50,6 +50,9 @@ fn migrate_legacy_catalog(app: &tauri::App) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Native folder/file dialogs: a path has to come from the operating
+        // system, not from a text field the user retypes.
+        .plugin(tauri_plugin_dialog::init())
         // The title bar is the one place a window always states what it is.
         // The version comes from the package metadata, the same source the
         // installer uses, so a reinstall is visible without opening a menu.
@@ -88,7 +91,11 @@ pub fn run() {
             commands::search::file_duplicates,
             commands::export::export_csv,
             commands::export::export_json,
-            commands::export::export_html
+            commands::export::export_html,
+            commands::volumes::pick_scan_folder,
+            commands::volumes::pick_volume_cover,
+            commands::volumes::set_volume_description,
+            commands::volumes::set_volume_cover
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

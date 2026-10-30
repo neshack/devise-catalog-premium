@@ -28,6 +28,10 @@ export interface VolumeSummary {
   indexed_at: number | null;
   file_count: number;
   total_size: number;
+  /** What the volume holds, in the user's words. */
+  description: string | null;
+  /** Catalog image as a `data:image/…` URL, embedded in the catalog. */
+  cover: string | null;
 }
 
 export interface DuplicateGroup {
@@ -113,6 +117,8 @@ export interface ScanStatus {
 
 export interface ScanOutcome {
   run_id: number;
+  /** Volume the attempt indexed, so the UI can attach its description/cover. */
+  volume_id: number;
   files_seen: number;
   state: "completed" | "cancelled" | "failed";
 }

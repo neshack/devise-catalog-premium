@@ -239,6 +239,11 @@ function toHit(f: MockFile): Hit {
 // rest mid-session.
 const volumeSerials = new Map<string, string>();
 const volumeIds = new Map<string, number>();
+const volumeMeta = new Map<string, { description: string | null; cover: string | null }>([
+  // Demo material: the fictional volumes say what they hold.
+  ["Fotos-2024", { description: "Fotos familiares y viajes, 2024", cover: null }],
+  ["Música-90s", { description: "Discos de los 90 y MP3 sueltos", cover: null }],
+]);
 let nextVolumeId = 1;
 
 function demoVolumeIdentity(label: string): { serial: string; id: number } {
@@ -263,6 +268,7 @@ function volumeSummaries(): VolumeSummary[] {
     if (!map.has(f.volume)) {
       order.push(f.volume);
       const identity = demoVolumeIdentity(f.volume);
+      const meta = volumeMeta.get(f.volume);
       map.set(f.volume, {
         id: identity.id,
         label: f.volume,
@@ -270,6 +276,8 @@ function volumeSummaries(): VolumeSummary[] {
         indexed_at: NOW - order.length * DAY,
         file_count: 0,
         total_size: 0,
+        description: meta?.description ?? null,
+        cover: meta?.cover ?? null,
       });
     }
     const v = map.get(f.volume)!;
@@ -299,6 +307,9 @@ interface MockArgs {
   parent?: number | null;
   out_path?: string | null;
   outPath?: string | null;
+  description?: string | null;
+  cover?: string | null;
+  generated?: string;
 }
 
 interface MockLevel {
@@ -497,6 +508,27 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
     }
     case "list_volumes":
       return delay(volumeSummaries() as T);
+    case "set_volume_description": {
+      const id = args.volume_id ?? args.volumeId;
+      const volume = volumeSummaries().find((v) => v.id === id);
+      if (volume === undefined) return Promise.reject(new Error("el volumen ya no existe en el catálogo"));
+      const text = String(args.description ?? "").trim();
+      volumeMeta.set(volume.label, {
+        description: text === "" ? null : text,
+        cover: volumeMeta.get(volume.label)?.cover ?? null,
+      });
+      return delay(undefined as T);
+    }
+    case "set_volume_cover": {
+      const id = args.volume_id ?? args.volumeId;
+      const volume = volumeSummaries().find((v) => v.id === id);
+      if (volume === undefined) return Promise.reject(new Error("el volumen ya no existe en el catálogo"));
+      volumeMeta.set(volume.label, {
+        description: volumeMeta.get(volume.label)?.description ?? null,
+        cover: typeof args.cover === "string" ? args.cover : null,
+      });
+      return delay(undefined as T);
+    }
     case "delete_volume": {
       const id = args.volume_id ?? args.volumeId;
       const volume = volumeSummaries().find((v) => v.id === id);
@@ -610,7 +642,14 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
     case "export_json":
     case "export_html": {
       const suffix = cmd.split("_")[1];
-      return delay(`/tmp/catalogo-demo-export.${suffix}` as T);
+      const id = args.volume_id ?? args.volumeId;
+      const volume =
+        id === undefined || id === null ? null : volumeSummaries().find((v) => v.id === id) ?? null;
+      const name =
+        volume === null
+          ? `catalogo-demo-export.${suffix}`
+          : `${volume.label.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-")}-demo-export.${suffix}`;
+      return delay(`/tmp/${name}` as T);
     }
     case "scan_volume": {
       const label = args.label ?? "USB-Nuevo";
@@ -637,6 +676,7 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
       const bytesTotal = total * 1_204_112;
       const runId = (lastRun?.id ?? 0) + 1;
       const root = String(args.root ?? "/media/demo");
+      const volumeId = demoVolumeIdentity(label).id;
       let seen = 0;
       scanPaused = false;
       // The row exists before the first file is read, exactly like the real
@@ -721,7 +761,16 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
               started_at: Math.floor(Date.now() / 1000),
               heartbeat_at: Math.floor(Date.now() / 1000),
             });
-            setTimeout(() => scanFinish?.({ run_id: runId, files_seen: total, state: "completed" }), 350);
+            setTimeout(
+              () =>
+                scanFinish?.({
+                  run_id: runId,
+                  volume_id: volumeId,
+                  files_seen: total,
+                  state: "completed",
+                }),
+              350,
+            );
           }
         }, 160);
       });
@@ -730,7 +779,12 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
       if (scanProgress) {
         if (lastRun !== null) setRun({ ...lastRun, state: "cancelled" });
         for (const l of scanListeners) l({ ...scanProgress, state: "cancelled" });
-        scanFinish?.({ run_id: scanProgress.run_id, files_seen: scanProgress.files_seen, state: "cancelled" });
+        scanFinish?.({
+          run_id: scanProgress.run_id,
+          volume_id: demoVolumeIdentity(String(lastRun?.volume_label ?? "")).id,
+          files_seen: scanProgress.files_seen,
+          state: "cancelled",
+        });
       }
       if (scanTimer) clearInterval(scanTimer);
       scanTimer = null;

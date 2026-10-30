@@ -138,6 +138,9 @@ pub struct ScanEvent {
 #[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct ScanOutcome {
     pub run_id: i64,
+    /// The volume this attempt indexed: the window needs it to attach the
+    /// description and the catalog image the user wrote in the scan dialog.
+    pub volume_id: i64,
     pub files_seen: u64,
     pub state: &'static str,
 }
@@ -672,6 +675,7 @@ pub fn scan_into_db(
         session.finish("cancelled", None);
         return Ok(ScanOutcome {
             run_id: session.run_id,
+            volume_id: vid,
             files_seen: entries.len() as u64,
             state: "cancelled",
         });
@@ -687,6 +691,7 @@ pub fn scan_into_db(
             session.finish(state, None);
             Ok(ScanOutcome {
                 run_id: session.run_id,
+                volume_id: vid,
                 files_seen,
                 state,
             })

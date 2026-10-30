@@ -108,6 +108,10 @@ interface CatalogState {
   /** Bumped whenever a tag changes, so an open inspector reloads its chips. */
   tagsRevision: number;
 
+  /** The left panel, collapsed to an icon rail. Remembered across sessions. */
+  sidebarCollapsed: boolean;
+  toggleSidebar: () => void;
+
   scan: ScanState;
   scanOpen: boolean;
 
@@ -122,6 +126,11 @@ interface CatalogState {
   setVolumeFilter: (volume: { label: string; serial: string } | null) => void;
   /** Forget a volume from the catalog. The files on disk are never touched. */
   deleteVolume: (volume: VolumeSummary) => Promise<boolean>;
+  /**
+   * Write the identifying data of a volume: what it holds and the image that
+   * stands for it. `null` clears a field; the catalog is the only copy.
+   */
+  updateVolumeMeta: (id: number, description: string | null, cover: string | null) => Promise<boolean>;
   /** Read (or re-read) the top level of the volume the tree is showing. */
   loadTree: () => Promise<void>;
   /** Open a folder, reading it the first time; close it when already open. */
@@ -139,7 +148,13 @@ interface CatalogState {
   setSort: (key: SortKey, dir?: SortDir) => void;
   loadDuplicates: () => Promise<void>;
   setScanOpen: (open: boolean) => void;
-  runScan: (root: string, label: string, serial: string) => Promise<void>;
+  runScan: (
+    root: string,
+    label: string,
+    serial: string,
+    description: string,
+    cover: string | null,
+  ) => Promise<void>;
   cancelScan: () => Promise<void>;
   pauseScan: () => Promise<void>;
   /** Continue where the last attempt stopped: unpause, or restart the walk. */
@@ -154,6 +169,36 @@ interface CatalogState {
 }
 
 let toastSeq = 1;
+
+const SIDEBAR_KEY = "devise.sidebar.collapsed";
+
+/** localStorage is a convenience; a browser that refuses it is not an error. */
+function readSidebarCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeSidebarCollapsed(collapsed: boolean): void {
+  try {
+    window.localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0");
+  } catch {
+    // The preference just will not survive a reload.
+  }
+}
+
+/** Local date for the exported page: the window knows the timezone, Rust not. */
+function exportStamp(): string {
+  return new Date().toLocaleString("es-MX", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export const useCatalog = create<CatalogState>((set, get) => ({
   dbPath: "",
@@ -182,6 +227,14 @@ export const useCatalog = create<CatalogState>((set, get) => ({
   tree: EMPTY_TREE,
   tagsRevision: 0,
 
+  sidebarCollapsed: readSidebarCollapsed(),
+  toggleSidebar: () =>
+    set((s) => {
+      const sidebarCollapsed = !s.sidebarCollapsed;
+      writeSidebarCollapsed(sidebarCollapsed);
+      return { sidebarCollapsed };
+    }),
+
   scan: IDLE_SCAN,
   scanOpen: false,
 
@@ -205,6 +258,9 @@ export const useCatalog = create<CatalogState>((set, get) => ({
           errorCount: p.error_count,
           bytesPerSec: p.bytes_per_sec,
           etaSecs: p.eta_secs,
+          // The ending is known the moment the backend says it ended: waiting
+          // for the command's reply would flash the form again for a beat.
+          ...(terminal ? { lastCount: p.files_seen } : {}),
         },
       }));
       // The scan is the only thing that ends without the UI asking, so the
@@ -402,9 +458,19 @@ export const useCatalog = create<CatalogState>((set, get) => ({
     }
   },
 
-  setScanOpen: (scanOpen) => set({ scanOpen }),
+  setScanOpen: (scanOpen) =>
+    set((s) => ({
+      scanOpen,
+      // Opening "Escanear volumen" starts a new scan, not a rerun of the last
+      // report: the ending of the previous attempt already had its toast and
+      // its strip. A live or paused scan is left alone.
+      scan:
+        scanOpen && !s.scan.running
+          ? { ...s.scan, lastCount: null, error: null }
+          : s.scan,
+    })),
 
-  runScan: async (root, label, serial) => {
+  runScan: async (root, label, serial, description, cover) => {
     set({ scan: { ...IDLE_SCAN, running: true, state: "running", phase: "walk" } });
     try {
       const outcome = await call<ScanOutcome>("scan_volume", {
@@ -413,15 +479,69 @@ export const useCatalog = create<CatalogState>((set, get) => ({
         label,
         serial: serial || `AUTO-${Date.now()}`,
       });
-      set({ scan: { ...get().scan, running: false, state: "idle", phase: null, lastCount: outcome.files_seen } });
+      // Keep how it ended: the dialog says "finished", "cancelled" or
+      // "interrupted", not all of them as a happy ending.
+      set({
+        scan: {
+          ...get().scan,
+          running: false,
+          state: outcome.state,
+          phase: null,
+          lastCount: outcome.files_seen,
+        },
+      });
+      // The identifying data is optional and only written when the user gave
+      // something: re-scanning a known volume must not erase its description.
+      const wroteDescription = description.trim() !== "";
+      try {
+        if (wroteDescription) {
+          await call("set_volume_description", {
+            dbPath: get().dbPath,
+            volumeId: outcome.volume_id,
+            description: description.trim(),
+          });
+        }
+        if (cover !== null) {
+          await call("set_volume_cover", {
+            dbPath: get().dbPath,
+            volumeId: outcome.volume_id,
+            cover,
+          });
+        }
+      } catch (e) {
+        get().pushToast(
+          "error",
+          `El volumen se escaneó, pero su ficha no se pudo guardar: ${String(e)}`,
+        );
+      }
       await get().refreshVolumes();
       await get().refreshScan();
     } catch (e) {
-      set({ scan: { ...get().scan, running: false, state: "idle", phase: null, error: String(e) } });
+      set({
+        scan: {
+          ...get().scan,
+          running: false,
+          state: "failed",
+          phase: null,
+          error: String(e),
+        },
+      });
       // The run row already knows more than this promise does (it may have
       // been cancelled or interrupted rather than failed).
       await get().refreshScan();
       get().pushToast("error", `Error al escanear: ${String(e)}`);
+    }
+  },
+
+  updateVolumeMeta: async (id, description, cover) => {
+    try {
+      await call("set_volume_description", { dbPath: get().dbPath, volumeId: id, description });
+      await call("set_volume_cover", { dbPath: get().dbPath, volumeId: id, cover });
+      await get().refreshVolumes();
+      return true;
+    } catch (e) {
+      get().pushToast("error", `No se pudo guardar la ficha del volumen: ${String(e)}`);
+      return false;
     }
   },
 
@@ -552,9 +672,20 @@ export const useCatalog = create<CatalogState>((set, get) => ({
     }),
 
   runExport: async (fmt) => {
+    const filter = get().volumeFilter;
+    const volume =
+      filter === null
+        ? null
+        : get().volumes.find((v) => v.label === filter.label && v.serial === filter.serial) ?? null;
     try {
-      const dest = await call<string>("export_" + fmt, { dbPath: get().dbPath, outPath: null });
-      get().pushToast("success", `Catálogo exportado (${fmt.toUpperCase()}) → ${dest}`);
+      const dest = await call<string>("export_" + fmt, {
+        dbPath: get().dbPath,
+        outPath: null,
+        volumeId: volume?.id ?? null,
+        ...(fmt === "html" ? { generated: exportStamp() } : {}),
+      });
+      const what = volume !== null ? `Volumen «${volume.label}»` : "Catálogo completo";
+      get().pushToast("success", `${what} exportado (${fmt.toUpperCase()}) → ${dest}`);
     } catch (e) {
       get().pushToast("error", `Error al exportar: ${String(e)}`);
     }

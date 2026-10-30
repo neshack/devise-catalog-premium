@@ -53,6 +53,17 @@ export const IconMusic = (p: IconProps) =>
 export const IconImage = (p: IconProps) =>
   base(p.size, <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="m4 18 5-5 3 3 4-4 4 4" /></>, p.className);
 
+/** Collapse the left panel to its icon rail. */
+export const IconPanelCollapse = (p: IconProps) =>
+  base(p.size, <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /><path d="m16.5 9.5-2.5 2.5 2.5 2.5" /></>, p.className);
+
+/** Bring the left panel back to its full width. */
+export const IconPanelExpand = (p: IconProps) =>
+  base(p.size, <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /><path d="m14 9.5 2.5 2.5-2.5 2.5" /></>, p.className);
+
+export const IconEdit = (p: IconProps) =>
+  base(p.size, <><path d="M12 20h9" /><path d="M16.6 3.6a2.1 2.1 0 0 1 3 3L7 19.2 3 20l.8-4Z" /></>, p.className);
+
 export const IconVideo = (p: IconProps) =>
   base(p.size, <><rect x="3" y="5" width="13" height="14" rx="2" /><path d="m16 10 5-3v10l-5-3" /></>, p.className);
 
