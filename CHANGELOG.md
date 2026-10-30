@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Elegir la unidad con el diálogo del sistema.** The scan dialog opens the
+  native folder picker and takes the absolute path from there; the label is
+  suggested from the chosen folder. Typing a path still works.
+- **Volumes can be identified without their disc.** Each volume accepts a
+  description and a catalog image. The image is shrunk, embedded in the
+  catalog as a data URL and shown in the sidebar, so the original file can
+  move or disappear.
+- **The left panel collapses to an icon rail**, with covers, monograms,
+  tooltips and accessible names; the preference survives a restart.
+- **Exports follow the selected volume.** The menu names the volume, the file
+  is named after it, and CSV/JSON now include the full location of every file.
+- **The HTML export is a page from this app**: the disc mark, the graphite and
+  amber palette, the volume cover and description, stats, and an offline
+  filter over the table. Pages are capped at 25 000 rows and say so; CSV and
+  JSON remain complete.
+
+### Fixed
+
+- A finished scan no longer leaves the dialog stuck on its summary: opening
+  **Escanear volumen** again starts a new scan.
+- The ending of a scan says whether it finished, was cancelled or was
+  interrupted, instead of reporting every outcome as a success.
+- A long path in the scan progress wraps inside the dialog instead of running
+  past its edge.
+- Dialogs taller than the window scroll their body; their buttons stay
+  reachable.
+
 ## [0.4.0] — 2026-10-25
 
 ### Added
