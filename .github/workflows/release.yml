@@ -122,7 +122,12 @@ jobs:
         run: echo '{}' > signing.json
 
       # ── Build ───────────────────────────────────────────────────────────
-      - name: Build bundles
+      # Tauri reads the signing material from the environment, so an empty
+      # secret is not "no signing": it is a certificate that fails to import.
+      # The signed build therefore only runs when the secrets exist, and the
+      # unsigned one never sees them.
+      - name: Build bundles (signed)
+        if: runner.os == 'macOS' && env.MACOS_SIGNING == 'true'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -130,6 +135,10 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run tauri build -- --config signing.json
+
+      - name: Build bundles (unsigned)
+        if: runner.os != 'macOS' || env.MACOS_SIGNING != 'true'
         run: npm run tauri build -- --config signing.json
 
       # ── Prove the signature, do not assume it ───────────────────────────
