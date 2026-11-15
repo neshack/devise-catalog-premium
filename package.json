@@ -1,7 +1,7 @@
 {
   "name": "devise-catalog-premium",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Offline-first desktop catalog for discs, USB drives, NAS and archives.",
   "author": "Nestor Peña (neshack)",
   "license": "MIT",

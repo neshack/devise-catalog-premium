@@ -68,7 +68,8 @@ metadata and "inside <archive>" provenance; ZIP contents indexed without
 extracting them; exports (CSV, JSON, HTML); a .cdc catalog file; demo mode with
 seeded data; light, dark and system themes with persisted preference; tags on
 files and folders with inherited search; "locate in tree" from results; full
-paths in the inspector and duplicate list.
+paths in the inspector and duplicate list; per-volume device type from eight
+bundled plates, with one or two indicator colors drawn in the sidebar.
 
 Scan attempts persist in `scan_runs` with a heartbeat, so a suspended or killed
 process can be resumed. Pausing parks the walk without busy-waiting. Unreadable

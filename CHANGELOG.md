@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] — 2026-10-29
+
+### Added
+
+- **Each volume says what kind of device it is and which colors identify it.**
+  The identity dialog offers eight bundled plates (optical, USB, external, SD,
+  internal, NAS, mounted image, encrypted) and one or two indicator colors,
+  stored with the volume and drawn in the sidebar as a two-tone LED. The plates
+  carry no color; the palette is data, so the same plate serves any choice.
+
 ## [0.5.0] — 2026-10-29
 
 ### Added
