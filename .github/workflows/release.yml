@@ -56,7 +56,7 @@ jobs:
       MACOS_NOTARIZING: ${{ secrets.APPLE_ID != '' && secrets.APPLE_CERTIFICATE != '' }}
       WINDOWS_SIGNING: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Tauri system dependencies (Linux)
         if: runner.os == 'Linux'
