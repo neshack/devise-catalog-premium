@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Security report
+  - name: Reporte de seguridad (security report)
     url: https://github.com/neshack/devise-catalog-premium/security/policy
-    about: Please report vulnerabilities privately, not as public issues.
-  - name: Questions and ideas
+    about: Reporta vulnerabilidades en privado, nunca como issue público. / Please report vulnerabilities privately, not as public issues.
+  - name: Preguntas e ideas (questions and ideas)
     url: https://github.com/neshack/devise-catalog-premium/discussions
-    about: Use discussions for open-ended questions.
+    about: Usa Discussions para preguntas abiertas. / Use discussions for open-ended questions.

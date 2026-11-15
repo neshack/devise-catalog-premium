@@ -1,33 +1,33 @@
-name: Feature request
-description: Propose a capability or a change in behavior.
+name: Solicitud de función (feature request)
+description: Propón una capacidad o un cambio de comportamiento. / Propose a capability or a change in behavior.
 title: "feat: "
 labels: ["enhancement", "needs-triage"]
 body:
   - type: textarea
     id: problem
     attributes:
-      label: Problem
-      description: What can you not do today, and why does it matter?
+      label: Problema (problem)
+      description: ¿Qué no puedes hacer hoy y por qué importa? / What can you not do today, and why does it matter?
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: Proposal
-      description: The smallest change that would solve it.
+      label: Propuesta (proposal)
+      description: El cambio más pequeño que lo resolvería. / The smallest change that would solve it.
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternatives considered
-      description: Other approaches, workarounds, or reasons to do nothing.
+      label: Alternativas consideradas (alternatives considered)
+      description: Otros enfoques, soluciones temporales o razones para no hacer nada. / Other approaches, workarounds, or reasons to do nothing.
   - type: checkboxes
     id: constraints
     attributes:
-      label: Project constraints
+      label: Restricciones del proyecto (project constraints)
       options:
-        - label: This keeps the app fully offline at runtime.
+        - label: La aplicación sigue funcionando 100 % sin conexión. (This keeps the app fully offline at runtime.)
           required: true
-        - label: This does not add a second UI framework or design system.
+        - label: No agrega un segundo framework de interfaz ni un segundo sistema de diseño. (This does not add a second UI framework or design system.)
           required: true

@@ -1,122 +1,131 @@
-# Changelog
+# Registro de cambios
 
-All notable changes to this project are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
-[Semantic Versioning](https://semver.org/).
+**Español** · [English](CHANGELOG.en.md)
+
+Todos los cambios notables de este proyecto se documentan aquí. El formato sigue
+[Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
+[Versionado Semántico](https://semver.org/lang/es/).
 
 ## [0.6.0] — 2026-10-29
 
-### Added
+### Agregado
 
-- **Each volume says what kind of device it is and which colors identify it.**
-  The identity dialog offers eight bundled plates (optical, USB, external, SD,
-  internal, NAS, mounted image, encrypted) and one or two indicator colors,
-  stored with the volume and drawn in the sidebar as a two-tone LED. The plates
-  carry no color; the palette is data, so the same plate serves any choice.
+- **Cada volumen dice qué tipo de dispositivo es y qué colores lo identifican.**
+  El diálogo de identidad ofrece ocho placas incluidas (óptico, USB, externo,
+  SD, interno, NAS, imagen montada y cifrado) y uno o dos colores de indicador,
+  guardados con el volumen y dibujados en la barra lateral como un LED de dos
+  tonos. Las placas no llevan color; la paleta es dato, así que la misma placa
+  sirve para cualquier elección.
 
 ## [0.5.0] — 2026-10-29
 
-### Added
+### Agregado
 
-- **Elegir la unidad con el diálogo del sistema.** The scan dialog opens the
-  native folder picker and takes the absolute path from there; the label is
-  suggested from the chosen folder. Typing a path still works.
-- **Volumes can be identified without their disc.** Each volume accepts a
-  description and a catalog image. The image is shrunk, embedded in the
-  catalog as a data URL and shown in the sidebar, so the original file can
-  move or disappear.
-- **The left panel collapses to an icon rail**, with covers, monograms,
-  tooltips and accessible names; the preference survives a restart.
-- **Exports follow the selected volume.** The menu names the volume, the file
-  is named after it, and CSV/JSON now include the full location of every file.
-- **The HTML export is a page from this app**: the disc mark, the graphite and
-  amber palette, the volume cover and description, stats, and an offline
-  filter over the table. Pages are capped at 25 000 rows and say so; CSV and
-  JSON remain complete.
+- **Elegir la unidad con el diálogo del sistema.** El diálogo de escaneo abre el
+  selector nativo de carpetas y toma de ahí la ruta absoluta; la etiqueta se
+  sugiere a partir de la carpeta elegida. Escribir la ruta a mano sigue
+  funcionando.
+- **Los volúmenes se pueden identificar sin su disco.** Cada volumen acepta una
+  descripción y una imagen de catálogo. La imagen se reduce, se incrusta en el
+  catálogo como data URL y se muestra en la barra lateral, así que el archivo
+  original puede moverse o desaparecer.
+- **El panel izquierdo se colapsa a una barra de íconos**, con portadas,
+  monogramas, tooltips y nombres accesibles; la preferencia sobrevive al
+  reinicio.
+- **Las exportaciones siguen al volumen seleccionado.** El menú nombra el
+  volumen, el archivo toma su nombre y CSV/JSON ahora incluyen la ubicación
+  completa de cada archivo.
+- **La exportación HTML es una página de esta aplicación**: la marca del disco,
+  la paleta de grafito y ámbar, la portada y la descripción del volumen,
+  estadísticas y un filtro sin conexión sobre la tabla. Las páginas se limitan a
+  25 000 filas y lo dicen; CSV y JSON siguen completos.
 
-### Fixed
+### Corregido
 
-- A finished scan no longer leaves the dialog stuck on its summary: opening
-  **Escanear volumen** again starts a new scan.
-- The ending of a scan says whether it finished, was cancelled or was
-  interrupted, instead of reporting every outcome as a success.
-- A long path in the scan progress wraps inside the dialog instead of running
-  past its edge.
-- Dialogs taller than the window scroll their body; their buttons stay
-  reachable.
+- Un escaneo terminado ya no deja el diálogo atascado en su resumen: abrir
+  **Escanear volumen** de nuevo inicia un escaneo nuevo.
+- El final de un escaneo dice si terminó, se canceló o se interrumpió, en lugar
+  de reportar todos los resultados como éxito.
+- Una ruta larga en el progreso del escaneo se ajusta dentro del diálogo en
+  lugar de salirse del borde.
+- Los diálogos más altos que la ventana desplazan su cuerpo; sus botones siguen
+  accesibles.
 
 ## [0.4.0] — 2026-10-25
 
-### Added
+### Agregado
 
-- Tags on files and folders. Folder tags are inherited by their subtree when
-  searching. Search syntax: `tag:playa` or `#playa`.
-- Result context menu with **Ubicar en el árbol**, which opens every folder
-  above the file and leaves it selected.
-- Full paths in the inspector and in the duplicate list, wrapped instead of
-  truncated.
+- Etiquetas en archivos y carpetas. Las etiquetas de carpeta se heredan en su
+  subárbol al buscar. Sintaxis de búsqueda: `tag:playa` o `#playa`.
+- Menú contextual de resultados con **Ubicar en el árbol**, que abre todas las
+  carpetas superiores al archivo y lo deja seleccionado.
+- Rutas completas en el inspector y en la lista de duplicados, ajustadas en
+  lugar de truncadas.
 
-### Fixed
+### Corregido
 
-- Volume removal runs off the main thread, so a large cascade no longer freezes
-  the window. The dialog stays open if the removal fails.
-- `files(volume_id)` is indexed: the same 100k-file cascade dropped from ~3.6 s
-  to ~1.0 s on the development machine.
-- Searching from the tree opens the results screen; selecting a volume with no
-  query opens the tree instead of an empty results list.
-- A pending search can no longer pull the user back to results while
-  "Ubicar en el árbol" is opening the tree.
+- La eliminación de volúmenes corre fuera del hilo principal, así que una
+  cascada grande ya no congela la ventana. El diálogo permanece abierto si la
+  eliminación falla.
+- `files(volume_id)` tiene índice: la misma cascada de 100k archivos bajó de
+  ~3.6 s a ~1.0 s en la máquina de desarrollo.
+- Buscar desde el árbol abre la pantalla de resultados; seleccionar un volumen
+  sin consulta abre el árbol en lugar de una lista de resultados vacía.
+- Una búsqueda pendiente ya no puede llevar al usuario de vuelta a resultados
+  mientras "Ubicar en el árbol" está abriendo el árbol.
 
 ## [0.3.0] — 2026-10-25
 
-### Changed
+### Cambiado
 
-- Renamed the product to **Devise Catalog Premium**.
-- New bundle identifier `com.devise.catalog`; the old `catalog.cdc` is copied
-  from `com.cdcatalog.premium` on first launch.
-- The tree is the primary view; selecting a file updates the inspector without
-  leaving the tree.
-- Volume selection is keyed by `(label, serial)`, so two discs with the same
-  label no longer select together.
-- The native window title and the header include the running version.
+- El producto se renombró a **Devise Catalog Premium**.
+- Nuevo identificador de paquete `com.devise.catalog`; el `catalog.cdc` anterior
+  se copia desde `com.cdcatalog.premium` en el primer arranque.
+- El árbol es la vista principal; seleccionar un archivo actualiza el inspector
+  sin salir del árbol.
+- La selección de volumen se identifica por `(label, serial)`, así que dos
+  discos con la misma etiqueta ya no se seleccionan juntos.
+- El título nativo de la ventana y la cabecera incluyen la versión en ejecución.
 
-### Added
+### Agregado
 
-- Safe volume removal: typing the volume label is required; the disk is never
-  modified.
-- Light, dark and system themes, selected from the header, applied before the
-  first paint and remembered across launches.
-- Splash screen with the brand, the version and the author's profile
+- Eliminación segura de volúmenes: hay que escribir la etiqueta del volumen; el
+  disco nunca se modifica.
+- Temas claro, oscuro y del sistema, elegidos desde la cabecera, aplicados antes
+  del primer pintado y recordados entre arranques.
+- Pantalla de bienvenida con la marca, la versión y el perfil del autor
   ([@neshack](https://x.com/neshack)).
-- Linux post-install script refreshes the icon and desktop caches, and the
-  bundle ships a 512 px icon.
+- El script de post-instalación de Linux refresca las cachés de íconos y del
+  escritorio, y el paquete incluye un ícono de 512 px.
 
-### Fixed
+### Corregido
 
-- Tauri v2 IPC arguments are sent in camelCase. Selecting a tree file no longer
-  fails with `missing required key fileId`; duplicate lookups and exports use
-  the same normalization.
-- `formatBytes` uses Spanish separators instead of `toFixed`.
+- Los argumentos IPC de Tauri v2 se envían en camelCase. Seleccionar un archivo
+  del árbol ya no falla con `missing required key fileId`; las consultas de
+  duplicados y las exportaciones usan la misma normalización.
+- `formatBytes` usa separadores en español en lugar de `toFixed`.
 
 ## [0.2.0] — 2026-10-18
 
-### Added
+### Agregado
 
-- Scan runs persisted in `scan_runs` with a heartbeat, startup sweep and manual
-  resume after a crash or suspend.
-- Scan strip with phase, current path, files seen, percentage, ETA, speed and
-  unreadable-path count; pause/resume/cancel.
-- Volume tree with one level per query and direct folder counts.
-- In-app brand mark, favicon and the complete OS icon set.
+- Los intentos de escaneo se guardan en `scan_runs` con un latido, barrido al
+  inicio y reanudación manual tras un cierre o suspensión.
+- Barra de escaneo con fase, ruta actual, archivos vistos, porcentaje, ETA,
+  velocidad y conteo de rutas ilegibles; pausar, reanudar y cancelar.
+- Árbol de volúmenes con un nivel por consulta y conteos directos por carpeta.
+- Marca de la aplicación, favicon y el conjunto completo de íconos del sistema
+  operativo.
 
-### Changed
+### Cambiado
 
-- Version has a single source: `package.json` (Tauri reads it, Vite injects it).
-- Status bar shows the running version.
+- La versión tiene una sola fuente: `package.json` (Tauri la lee, Vite la
+  inyecta).
+- La barra de estado muestra la versión en ejecución.
 
 ## [0.1.0] — 2026-09-05
 
-### Added
+### Agregado
 
-- First MVP: differential volume scan, SQLite FTS5 search, duplicate detection,
-  inspector, ZIP entries, exports and demo mode.
+- Primer MVP: escaneo diferencial de volúmenes, búsqueda SQLite FTS5, detección
+  de duplicados, inspector, entradas de ZIP, exportaciones y modo demostración.

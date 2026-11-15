@@ -1,58 +1,61 @@
-name: Bug report
-description: Something is broken or behaves differently than documented.
+name: Reporte de error (bug report)
+description: Algo está roto o se comporta distinto de lo documentado. / Something is broken or behaves differently than documented.
 title: "bug: "
 labels: ["bug", "needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
+        Gracias por reportar. No incluyas rutas privadas, números de serie ni
+        contenido de catálogos que no quieras hacer público.
+
         Thanks for reporting. Please do not include private file paths, serial
         numbers or catalog contents you do not want to make public.
   - type: input
     id: version
     attributes:
-      label: Version
-      description: The version shown in the footer or the window title.
-      placeholder: "0.3.0"
+      label: Versión (version)
+      description: La versión del pie de página o del título de la ventana. / The version shown in the footer or the window title.
+      placeholder: "0.6.0"
     validations:
       required: true
   - type: dropdown
     id: platform
     attributes:
-      label: Platform
+      label: Plataforma (platform)
       options:
         - Linux
         - Windows
         - macOS
-        - Other / not sure
+        - Otro / no estoy seguro (other / not sure)
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: Steps to reproduce
-      description: The smallest sequence that shows the problem.
+      label: Pasos para reproducir (steps to reproduce)
+      description: La secuencia más corta que muestra el problema. / The smallest sequence that shows the problem.
       placeholder: |
-        1. Open …
-        2. Select …
-        3. See …
+        1. Abrir …
+        2. Seleccionar …
+        3. Ver …
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
-      label: Expected behavior
+      label: Comportamiento esperado (expected behavior)
     validations:
       required: true
   - type: textarea
     id: actual
     attributes:
-      label: Actual behavior
-      description: Include the exact error message and, if possible, a screenshot.
+      label: Comportamiento real (actual behavior)
+      description: Incluye el mensaje de error exacto y, si puedes, una captura. / Include the exact error message and, if possible, a screenshot.
     validations:
       required: true
   - type: textarea
     id: context
     attributes:
-      label: Additional context
-      description: Catalog size, media type, whether it happens in demo mode, etc.
+      label: Contexto adicional (additional context)
+      description: Tamaño del catálogo, tipo de medio, si pasa en modo demostración, etc. / Catalog size, media type, whether it happens in demo mode, etc.

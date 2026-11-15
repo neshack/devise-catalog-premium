@@ -1,17 +1,20 @@
-# Contributing
+# Cómo contribuir
 
-Thanks for taking the time to improve Devise Catalog Premium. This is a small,
-local-first desktop app; the best contributions are focused, tested and easy to
-review.
+**Español** · [English](CONTRIBUTING.en.md)
 
-## Before you start
+Gracias por tomarte el tiempo de mejorar Devise Catalog Premium. Es una
+aplicación de escritorio pequeña y local-first; las mejores contribuciones son
+focales, probadas y fáciles de revisar.
 
-- Search the existing issues and pull requests.
-- For a behavior change or a new dependency, open an issue first so the design
-  can be agreed before code exists.
-- Security problems go through [SECURITY.md](SECURITY.md), never a public issue.
+## Antes de empezar
 
-## Development setup
+- Busca en los issues y pull requests existentes.
+- Si vas a cambiar un comportamiento o agregar una dependencia, abre un issue
+  primero para acordar el diseño antes de que exista código.
+- Los problemas de seguridad van por [SECURITY.md](SECURITY.md), nunca por un
+  issue público.
+
+## Preparar el entorno
 
 ```bash
 git clone https://github.com/neshack/devise-catalog-premium.git
@@ -20,15 +23,15 @@ npm ci
 npm run tauri dev
 ```
 
-Frontend-only demo mode:
+Modo demostración, solo frontend:
 
 ```bash
 npm run dev   # http://localhost:1420
 ```
 
-Linux build dependencies are listed in the [README](README.md).
+Las dependencias de compilación en Linux están en el [README](README.md).
 
-## What to run before opening a PR
+## Qué correr antes de abrir un PR
 
 ```bash
 # Frontend
@@ -36,7 +39,7 @@ npx tsc --noEmit
 npx vitest run
 npm run build
 
-# E2E (starts Vite on :1420)
+# E2E (levanta Vite en :1420)
 npx playwright test
 
 # Rust
@@ -46,23 +49,28 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-A pull request that changes behavior without a test is incomplete. A bug fix
-should include a regression test at the seam where the bug actually happened.
+Un pull request que cambia comportamiento sin una prueba está incompleto. Un
+arreglo de bug debe incluir una prueba de regresión en el punto exacto donde
+ocurrió el bug.
 
-## Code style
+## Estilo de código
 
-- TypeScript: strict mode, no `any` unless a third-party boundary forces it.
-- Rust: `rustfmt` and `clippy -D warnings` are the floor.
-- Comments explain **why**, not what the next line does.
-- UI copy is Spanish (Mexico-neutral). Code, comments, commit messages, docs and
-  identifiers are English.
-- Keep the design system in `src/index.css`; do not introduce Tailwind or a
-  second component library.
-- No runtime network calls, external fonts or CDNs. The app must work offline.
+- TypeScript: modo estricto, sin `any` salvo que una frontera de terceros lo
+  obligue.
+- Rust: `rustfmt` y `clippy -D warnings` son el piso.
+- Los comentarios explican **por qué**, no lo que hace la línea siguiente.
+- La interfaz y la documentación de usuario van en español neutro; el código,
+  los comentarios, los mensajes de commit y los identificadores van en inglés.
+- Cada documento de usuario tiene su versión en inglés (`*.en.md`). Si cambias
+  uno, actualiza el otro en el mismo pull request.
+- Mantén el sistema de diseño en `src/index.css`; no introduzcas Tailwind ni una
+  segunda librería de componentes.
+- Sin llamadas de red en tiempo de ejecución, sin tipografías externas y sin
+  CDNs. La aplicación debe funcionar sin conexión.
 
 ## Commits
 
-Conventional Commits, one work unit per commit:
+Conventional Commits, una unidad de trabajo por commit:
 
 ```text
 feat(tree): keep the selected file in place
@@ -70,18 +78,18 @@ fix(ipc): send Tauri arguments in camelCase
 docs: explain the catalog migration
 ```
 
-No AI attribution or `Co-Authored-By` trailers. If a commit changes behavior,
-the body should say what was verified and how.
+Sin atribución de IA ni trailers `Co-Authored-By`. Si un commit cambia
+comportamiento, el cuerpo debe decir qué se verificó y cómo.
 
 ## Pull requests
 
-- Keep the diff focused; split unrelated changes.
-- Describe the user-visible problem and the chosen fix.
-- Include screenshots or a short recording for UI changes.
-- List the commands you ran and their result.
-- Link the issue the PR closes.
+- Mantén el diff focalizado; separa los cambios no relacionados.
+- Describe el problema visible para el usuario y el arreglo elegido.
+- Incluye capturas o una grabación corta para cambios de interfaz.
+- Enumera los comandos que corriste y su resultado.
+- Enlaza el issue que cierra el PR.
 
-## License
+## Licencia
 
-By contributing you agree that your contribution is licensed under the
-[MIT License](LICENSE).
+Al contribuir aceptas que tu contribución se publica bajo la
+[Licencia MIT](LICENSE).

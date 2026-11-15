@@ -1,78 +1,82 @@
-# Publishing to GitHub
+# Publicar en GitHub
 
-The repository is prepared for a public `neshack/devise-catalog-premium`
-repository. If your GitHub handle is different, update the URLs in
-`package.json`, `src-tauri/Cargo.toml`, `README.md`, `README.es.md` and the
-badges before pushing.
+**Español** · [English](PUBLISHING.en.md)
 
-## 1. Create the repository
+El repositorio está preparado para ser público en `neshack/devise-catalog-premium`.
+Si tu usuario de GitHub es distinto, actualiza las URLs en `package.json`,
+`src-tauri/Cargo.toml`, `README.md`, `README.en.md` y los badges antes de hacer
+push.
 
-Create an empty **public** repository named `devise-catalog-premium` on GitHub.
-Do not initialize it with a README, license or `.gitignore`: this history
-already has them.
+## 1. Crear el repositorio
 
-## 2. Push `main`
+Crea un repositorio **público** vacío llamado `devise-catalog-premium` en
+GitHub. No lo inicialices con README, licencia ni `.gitignore`: este historial ya
+los tiene.
+
+## 2. Subir `main`
 
 ```bash
 git remote add origin https://github.com/neshack/devise-catalog-premium.git
 git push -u origin main
 ```
 
-The default branch should be `main`. Tags are pushed one at a time, because each
-`v*` tag starts a full three-OS release build:
+La rama por defecto debe ser `main`. Los tags se suben de uno en uno, porque
+cada tag `v*` inicia una compilación completa para los tres sistemas:
 
 ```bash
 git push origin v0.6.0
 ```
 
-## 3. Protect the default branch
+## 3. Proteger la rama por defecto
 
-In **Settings → Branches**, protect `main` and require the `ci` checks before
-merging. The workflow runs frontend, Rust, e2e and the FTS benchmark.
+En **Settings → Branches**, protege `main` y exige los checks de `ci` antes de
+fusionar. El workflow corre frontend, Rust, e2e y el benchmark de FTS.
 
-## 4. Signing secrets (optional)
+## 4. Secretos de firma (opcional)
 
-The release workflow builds unsigned artifacts when the secrets are absent.
-To sign Windows and macOS builds, run `scripts/wizard-signing.sh` and add the
-resulting repository secrets in **Settings → Secrets and variables → Actions**:
+El workflow de release genera artefactos sin firma cuando los secretos no
+existen. Para firmar las compilaciones de Windows y macOS, corre
+`scripts/wizard-signing.sh` y agrega los secretos resultantes en
+**Settings → Secrets and variables → Actions**:
 
-| Group | Secrets |
+| Grupo | Secretos |
 |---|---|
-| macOS signing | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `KEYCHAIN_PASSWORD`, `APPLE_SIGNING_IDENTITY` |
-| macOS notarization | `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` |
-| Windows signing | `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD` |
+| Firma de macOS | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `KEYCHAIN_PASSWORD`, `APPLE_SIGNING_IDENTITY` |
+| Notarización de macOS | `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` |
+| Firma de Windows | `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD` |
 
-Linux packages remain unsigned by design. A GPG-signed package repository is
-future work.
+Los paquetes de Linux siguen sin firma a propósito. Un repositorio de paquetes
+Linux firmado con GPG es trabajo futuro.
 
-## 5. Release
+## 5. Publicar una versión
 
 ```bash
 git tag v0.6.0
 git push origin v0.6.0
 ```
 
-The `release` workflow builds `.rpm`, `.deb`, `.AppImage`, `.msi`/`.exe` and
-`.dmg`/`.app`, verifies any configured signatures, and publishes a GitHub
-Release with the artifacts attached.
+El workflow `release` compila `.rpm`, `.deb`, `.AppImage`, `.msi`/`.exe` y
+`.dmg` (Apple Silicon), verifica las firmas configuradas y publica un Release de
+GitHub con los artefactos adjuntos.
 
-## 6. Repository settings worth enabling
+## 6. Configuración del repositorio que conviene activar
 
-- **Security → Private vulnerability reporting** (matches `SECURITY.md`).
-- **Discussions** (the issue template links to it).
-- **Dependabot alerts** and **Dependabot security updates**.
-- **Actions → General → Workflow permissions**: read-only by default; the
-  release job asks for `contents: write` explicitly.
+- **Security → Private vulnerability reporting** (coincide con `SECURITY.md`).
+- **Discussions** (la plantilla de issues enlaza ahí).
+- **Dependabot alerts** y **Dependabot security updates**.
+- **Actions → General → Workflow permissions**: solo lectura por defecto; el job
+  de release pide `contents: write` de forma explícita.
 
-## Checklist before the first push
+## Lista de verificación antes del primer push
 
 - [ ] `npx tsc --noEmit`
 - [ ] `npx vitest run`
 - [ ] `npx playwright test`
-- [ ] `cargo fmt --all -- --check` (from `src-tauri/`)
+- [ ] `cargo fmt --all -- --check` (desde `src-tauri/`)
 - [ ] `cargo clippy --workspace --all-targets -- -D warnings`
 - [ ] `cargo test --workspace`
-- [ ] `npm audit` reports no production vulnerabilities
-- [ ] `git status` is clean
-- [ ] No `.env`, certificates or signing keys are tracked
-- [ ] The version in the footer, the installer and the tag agree
+- [ ] `npm audit` no reporta vulnerabilidades de producción
+- [ ] `git status` está limpio
+- [ ] No hay `.env`, certificados ni llaves de firma versionados
+- [ ] La versión del pie de página, la del instalador y la del tag coinciden
+- [ ] Cada documento de usuario que cambió tiene su versión en inglés al día
