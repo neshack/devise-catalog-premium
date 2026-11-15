@@ -71,6 +71,14 @@ await page.getByTestId("tree-row").nth(1).click();
 await page.waitForTimeout(600);
 await shot("08-tree");
 
+// the identity dialog: the device plate, the indicator colors and the description
+await page.getByRole("complementary", { name: /volúmenes/i }).getByText("Fotos-2024").hover();
+await page.getByRole("button", { name: /Editar volumen Fotos-2024/i }).click();
+await page.waitForTimeout(600);
+await shot("22-volume-identity");
+await page.keyboard.press("Escape");
+await page.waitForTimeout(300);
+
 // removing a volume: the deliberate confirmation, not a stray click
 await page.getByRole("complementary", { name: /volúmenes/i }).getByText("Fotos-2024").hover();
 await page.getByRole("button", { name: /Eliminar volumen Fotos-2024/i }).click();
