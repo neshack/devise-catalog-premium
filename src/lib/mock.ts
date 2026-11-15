@@ -239,10 +239,43 @@ function toHit(f: MockFile): Hit {
 // rest mid-session.
 const volumeSerials = new Map<string, string>();
 const volumeIds = new Map<string, number>();
-const volumeMeta = new Map<string, { description: string | null; cover: string | null }>([
+const volumeMeta = new Map<
+  string,
+  {
+    description: string | null;
+    cover: string | null;
+    media_kind: string | null;
+    indicator_colors: string | null;
+  }
+>([
   // Demo material: the fictional volumes say what they hold.
-  ["Fotos-2024", { description: "Fotos familiares y viajes, 2024", cover: null }],
-  ["Música-90s", { description: "Discos de los 90 y MP3 sueltos", cover: null }],
+  [
+    "Fotos-2024",
+    {
+      description: "Fotos familiares y viajes, 2024",
+      cover: null,
+      media_kind: "card",
+      indicator_colors: '["#35c6d6"]',
+    },
+  ],
+  [
+    "Música-90s",
+    {
+      description: "Discos de los 90 y MP3 sueltos",
+      cover: null,
+      media_kind: "optical",
+      indicator_colors: '["#ff4d6d","#ffb02e"]',
+    },
+  ],
+  [
+    "Backup-12",
+    {
+      description: "Documentos, proyectos y copias",
+      cover: null,
+      media_kind: "external",
+      indicator_colors: '["#8fd96a"]',
+    },
+  ],
 ]);
 let nextVolumeId = 1;
 
@@ -278,6 +311,8 @@ function volumeSummaries(): VolumeSummary[] {
         total_size: 0,
         description: meta?.description ?? null,
         cover: meta?.cover ?? null,
+        media_kind: meta?.media_kind ?? null,
+        indicator_colors: meta?.indicator_colors ?? null,
       });
     }
     const v = map.get(f.volume)!;
@@ -309,6 +344,10 @@ interface MockArgs {
   outPath?: string | null;
   description?: string | null;
   cover?: string | null;
+  media_kind?: string | null;
+  mediaKind?: string | null;
+  indicator_colors?: string[] | null;
+  indicatorColors?: string[] | null;
   generated?: string;
 }
 
@@ -516,6 +555,8 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
       volumeMeta.set(volume.label, {
         description: text === "" ? null : text,
         cover: volumeMeta.get(volume.label)?.cover ?? null,
+        media_kind: volumeMeta.get(volume.label)?.media_kind ?? null,
+        indicator_colors: volumeMeta.get(volume.label)?.indicator_colors ?? null,
       });
       return delay(undefined as T);
     }
@@ -526,6 +567,23 @@ export function mockCall<T>(cmd: string, args: MockArgs = {}): Promise<T> {
       volumeMeta.set(volume.label, {
         description: volumeMeta.get(volume.label)?.description ?? null,
         cover: typeof args.cover === "string" ? args.cover : null,
+        media_kind: volumeMeta.get(volume.label)?.media_kind ?? null,
+        indicator_colors: volumeMeta.get(volume.label)?.indicator_colors ?? null,
+      });
+      return delay(undefined as T);
+    }
+    case "set_volume_identity": {
+      const id = args.volume_id ?? args.volumeId;
+      const volume = volumeSummaries().find((v) => v.id === id);
+      if (volume === undefined) return Promise.reject(new Error("el volumen ya no existe en el catálogo"));
+      const kind = args.media_kind ?? args.mediaKind ?? null;
+      const colors = args.indicator_colors ?? args.indicatorColors ?? null;
+      volumeMeta.set(volume.label, {
+        description: volumeMeta.get(volume.label)?.description ?? null,
+        cover: volumeMeta.get(volume.label)?.cover ?? null,
+        media_kind: kind === "" ? null : kind,
+        indicator_colors:
+          colors === null || colors.length === 0 ? null : JSON.stringify(colors.slice(0, 2)),
       });
       return delay(undefined as T);
     }

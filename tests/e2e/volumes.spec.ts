@@ -68,8 +68,52 @@ test("la ficha guarda descripción e imagen del volumen", async ({ page }) => {
   await dialog.getByRole("button", { name: /guardar ficha/i }).click();
   await expect(dialog).toBeHidden();
   await expect(sidebar.getByText("Fotos del viaje a Oaxaca")).toBeVisible();
-  // The cover replaces the asset tag in the identity plate.
-  await expect(sidebar.locator(".side-item__media img")).toHaveCount(1);
+  // The cover replaces the plate (device or asset tag) in the identity slot.
+  const row = sidebar.locator(".side-item-row").filter({ hasText: "Fotos-2024" });
+  await expect(row.locator(".side-item__media")).toHaveClass(/has-cover/);
+  await expect(row.locator(".side-item__media img")).toHaveCount(1);
+});
+
+test("el tipo de dispositivo y sus colores cambian el indicador del volumen", async ({ page }) => {
+  await page.goto("/");
+  const sidebar = page.getByRole("complementary", { name: /volúmenes/i });
+  await sidebar.getByRole("button", { name: /^Backup-12/ }).hover();
+  await sidebar.getByRole("button", { name: /editar volumen Backup-12/i }).click();
+
+  const dialog = page.getByRole("dialog", { name: /identificar volumen/i });
+  // The demo seeds Backup-12 as an external drive with one green color.
+  await expect(dialog.getByRole("radio", { name: /disco externo/i })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+
+  await dialog.getByRole("radio", { name: /volumen cifrado/i }).click();
+  // The type brings its signature colors; the user can replace them.
+  await expect(dialog.getByText("#FF4438")).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Cian" }).click();
+  await expect(dialog.getByText("#35C6D6")).toBeVisible();
+
+  await dialog.getByRole("button", { name: /segundo color/i }).click();
+  await dialog.getByRole("button", { name: "Índigo" }).click();
+  await expect(dialog.getByText(/#35C6D6\s+#6A7CF5/)).toBeVisible();
+
+  await dialog.getByRole("button", { name: /guardar ficha/i }).click();
+  await expect(dialog).toBeHidden();
+
+  const row = sidebar.locator(".side-item-row").filter({ hasText: "Backup-12" });
+  await expect(row.locator(".side-item__led")).toHaveAttribute("style", /linear-gradient/);
+  await expect(row.locator(".side-item__media")).toHaveClass(/has-device/);
+
+  // Reopening shows what was saved, not the type defaults again.
+  await row.hover();
+  await row.getByRole("button", { name: /editar volumen Backup-12/i }).click();
+  const again = page.getByRole("dialog", { name: /identificar volumen/i });
+  await expect(again.getByRole("radio", { name: /volumen cifrado/i })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await expect(again.getByText(/#35C6D6\s+#6A7CF5/)).toBeVisible();
 });
 
 test("exportar toma el volumen seleccionado y lo dice", async ({ page }) => {

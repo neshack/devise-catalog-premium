@@ -95,7 +95,8 @@ pub fn run() {
             commands::volumes::pick_scan_folder,
             commands::volumes::pick_volume_cover,
             commands::volumes::set_volume_description,
-            commands::volumes::set_volume_cover
+            commands::volumes::set_volume_cover,
+            commands::volumes::set_volume_identity
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

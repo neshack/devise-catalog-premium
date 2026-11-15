@@ -32,6 +32,10 @@ export interface VolumeSummary {
   description: string | null;
   /** Catalog image as a `data:image/…` URL, embedded in the catalog. */
   cover: string | null;
+  /** Device kind (`optical`, `usb`, `external`, …) or `null` when unset. */
+  media_kind: string | null;
+  /** One or two `#rrggbb` colors as a JSON array, or `null`. */
+  indicator_colors: string | null;
 }
 
 export interface DuplicateGroup {

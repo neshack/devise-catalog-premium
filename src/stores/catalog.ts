@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { DeviceKind } from "../lib/devices";
 import { formatCount } from "../lib/format";
 import { call, onScanProgress, resolveDbPath } from "../lib/ipc";
 import type {
@@ -127,10 +128,17 @@ interface CatalogState {
   /** Forget a volume from the catalog. The files on disk are never touched. */
   deleteVolume: (volume: VolumeSummary) => Promise<boolean>;
   /**
-   * Write the identifying data of a volume: what it holds and the image that
-   * stands for it. `null` clears a field; the catalog is the only copy.
+   * Write the identifying data of a volume: what it holds, the image that
+   * stands for it, the kind of device it lives on and the one or two colors
+   * of its indicator. `null` clears a field; the catalog is the only copy.
    */
-  updateVolumeMeta: (id: number, description: string | null, cover: string | null) => Promise<boolean>;
+  updateVolumeMeta: (
+    id: number,
+    description: string | null,
+    cover: string | null,
+    mediaKind: DeviceKind | null,
+    indicatorColors: string[],
+  ) => Promise<boolean>;
   /** Read (or re-read) the top level of the volume the tree is showing. */
   loadTree: () => Promise<void>;
   /** Open a folder, reading it the first time; close it when already open. */
@@ -533,10 +541,17 @@ export const useCatalog = create<CatalogState>((set, get) => ({
     }
   },
 
-  updateVolumeMeta: async (id, description, cover) => {
+  updateVolumeMeta: async (id, description, cover, mediaKind, indicatorColors) => {
     try {
       await call("set_volume_description", { dbPath: get().dbPath, volumeId: id, description });
       await call("set_volume_cover", { dbPath: get().dbPath, volumeId: id, cover });
+      await call("set_volume_identity", {
+        dbPath: get().dbPath,
+        volumeId: id,
+        mediaKind,
+        // Colors without a device type would be an identity with no subject.
+        indicatorColors: mediaKind !== null && indicatorColors.length > 0 ? indicatorColors : null,
+      });
       await get().refreshVolumes();
       return true;
     } catch (e) {

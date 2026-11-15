@@ -23,9 +23,7 @@ fn load_selection(
         Some(id) => db.volume_meta(id).map_err(|e| e.to_string())?,
         None => None,
     };
-    let (total_rows, total_bytes) = db
-        .export_stats(volume_id)
-        .map_err(|e| e.to_string())?;
+    let (total_rows, total_bytes) = db.export_stats(volume_id).map_err(|e| e.to_string())?;
     let rows = db
         .export_rows(volume_id, limit)
         .map_err(|e| e.to_string())?
@@ -73,10 +71,9 @@ fn default_export_path(db_path: &str, name: &str, suffix: &str) -> String {
     let prefix = if name.is_empty() { stem } else { name };
     let file = format!("{prefix}-export.{suffix}");
     match p.parent() {
-        Some(parent) if !parent.as_os_str().is_empty() => parent
-            .join(file)
-            .to_string_lossy()
-            .into_owned(),
+        Some(parent) if !parent.as_os_str().is_empty() => {
+            parent.join(file).to_string_lossy().into_owned()
+        }
         _ => file,
     }
 }

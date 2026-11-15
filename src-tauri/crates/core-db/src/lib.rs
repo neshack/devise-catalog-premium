@@ -36,6 +36,12 @@ pub struct VolumeSummary {
     /// Catalog image as a `data:image/...` URL, small enough to live in the
     /// catalog file. `None` when the volume has no cover.
     pub cover: Option<String>,
+    /// What kind of device holds the volume (`optical`, `usb`, ...). `None`
+    /// until the user assigns one; the window decides how to draw it.
+    pub media_kind: Option<String>,
+    /// One or two `#rrggbb` colors as a JSON array. Colors belong to the
+    /// volume, not to the device type, so they travel with the identity.
+    pub indicator_colors: Option<String>,
 }
 
 /// The parts of a volume that identify it on screen, cover included.
@@ -46,6 +52,8 @@ pub struct VolumeMeta {
     pub serial: String,
     pub description: Option<String>,
     pub cover: Option<String>,
+    pub media_kind: Option<String>,
+    pub indicator_colors: Option<String>,
 }
 
 #[derive(Debug)]
@@ -297,9 +305,7 @@ fn ensure_column(conn: &Connection, table: &str, column: &str, decl: &str) -> Re
         .collect::<std::result::Result<Vec<_>, _>>()?;
     drop(stmt);
     if !existing.iter().any(|c| c == column) {
-        conn.execute_batch(&format!(
-            "ALTER TABLE {table} ADD COLUMN {column} {decl}"
-        ))?;
+        conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {decl}"))?;
     }
     Ok(())
 }
@@ -317,6 +323,7 @@ impl Db {
         conn.execute_batch(include_str!("schema.sql"))?;
         ensure_column(&conn, "volumes", "description", "TEXT")?;
         ensure_column(&conn, "volumes", "cover", "TEXT")?;
+        ensure_column(&conn, "volumes", "indicator_colors", "TEXT")?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -351,7 +358,7 @@ impl Db {
         let c = self.conn.lock().map_err(|_| lock_err())?;
         let mut stmt = c.prepare(
             "SELECT v.id, v.label, v.serial, v.indexed_at, COUNT(f.id), COALESCE(SUM(f.size), 0), \
-             v.description, v.cover \
+             v.description, v.cover, v.media_kind, v.indicator_colors \
              FROM volumes v LEFT JOIN files f ON f.volume_id = v.id \
              GROUP BY v.id ORDER BY v.indexed_at DESC, v.label ASC",
         )?;
@@ -366,6 +373,8 @@ impl Db {
                     total_size: r.get(5)?,
                     description: r.get(6)?,
                     cover: r.get(7)?,
+                    media_kind: r.get(8)?,
+                    indicator_colors: r.get(9)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -376,7 +385,8 @@ impl Db {
     pub fn volume_meta(&self, id: i64) -> Result<Option<VolumeMeta>> {
         let c = self.conn.lock().map_err(|_| lock_err())?;
         let mut stmt = c.prepare(
-            "SELECT id, label, serial, description, cover FROM volumes WHERE id=?1 LIMIT 1",
+            "SELECT id, label, serial, description, cover, media_kind, indicator_colors \
+             FROM volumes WHERE id=?1 LIMIT 1",
         )?;
         let mut rows = stmt.query_map(params![id], |r| {
             Ok(VolumeMeta {
@@ -385,6 +395,8 @@ impl Db {
                 serial: r.get(2)?,
                 description: r.get(3)?,
                 cover: r.get(4)?,
+                media_kind: r.get(5)?,
+                indicator_colors: r.get(6)?,
             })
         })?;
         Ok(rows.next().transpose()?)
@@ -406,6 +418,25 @@ impl Db {
         Ok(c.execute(
             "UPDATE volumes SET cover=?2 WHERE id=?1",
             params![id, cover],
+        )?)
+    }
+
+    /// Write (or clear, with `None`) how a volume is identified: the kind of
+    /// device it lives on and the one or two colors of its indicator.
+    ///
+    /// Validation lives in the command layer, the boundary the window talks
+    /// to; this method stores exactly what it is given so the catalog stays a
+    /// faithful copy of the user's choice.
+    pub fn set_volume_identity(
+        &self,
+        id: i64,
+        media_kind: Option<&str>,
+        indicator_colors: Option<&str>,
+    ) -> Result<usize> {
+        let c = self.conn.lock().map_err(|_| lock_err())?;
+        Ok(c.execute(
+            "UPDATE volumes SET media_kind=?2, indicator_colors=?3 WHERE id=?1",
+            params![id, media_kind, indicator_colors],
         )?)
     }
 

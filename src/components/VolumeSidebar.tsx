@@ -1,4 +1,9 @@
 import { useState } from "react";
+import {
+  deviceType,
+  indicatorBackground,
+  parseIndicatorColors,
+} from "../lib/devices";
 import { formatBytes, formatCount, formatDate } from "../lib/format";
 import type { VolumeSummary } from "../lib/types";
 import { useCatalog } from "../stores/catalog";
@@ -36,10 +41,12 @@ function monogram(label: string): string {
 }
 
 function volumeTitle(v: VolumeSummary): string {
+  const type = deviceType(v.media_kind);
   const lines = [
     `${v.label} — ${v.serial}`,
     `${formatCount(v.file_count)} archivos · ${formatBytes(v.total_size)}`,
   ];
+  if (type !== null) lines.push(`Tipo: ${type.label}`);
   if (v.description !== null) lines.push(v.description);
   return lines.join("\n");
 }
@@ -124,6 +131,8 @@ export default function VolumeSidebar() {
 
           {volumes.map((v) => {
             const active = isSameVolume(v.label, v.serial);
+            const device = deviceType(v.media_kind);
+            const colors = parseIndicatorColors(v.indicator_colors);
             return (
               <div className={`side-item-row${active ? " is-active" : ""}`} key={v.id}>
                 <button
@@ -133,14 +142,28 @@ export default function VolumeSidebar() {
                   }
                   aria-pressed={active}
                   aria-label={`${v.label} — ${v.serial}${
-                    v.description !== null ? `. ${v.description}` : ""
-                  }`}
+                    device !== null ? `. ${device.label}` : ""
+                  }${v.description !== null ? `. ${v.description}` : ""}`}
                   title={volumeTitle(v)}
                 >
-                  <span className="side-item__led" aria-hidden="true" />
-                  <span className={`side-item__media${v.cover !== null ? " has-cover" : ""}`}>
+                  <span
+                    className="side-item__led"
+                    aria-hidden="true"
+                    style={
+                      colors.length > 0
+                        ? { background: indicatorBackground(colors, "column") }
+                        : undefined
+                    }
+                  />
+                  <span
+                    className={`side-item__media${
+                      v.cover !== null ? " has-cover" : device !== null ? " has-device" : ""
+                    }`}
+                  >
                     {v.cover !== null ? (
                       <img src={v.cover} alt="" />
+                    ) : device !== null ? (
+                      <img src={device.image} alt="" />
                     ) : (
                       <span className="side-item__tag">
                         {sidebarCollapsed ? monogram(v.label) : volumeTag(v.label, v.serial)}

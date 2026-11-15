@@ -9,7 +9,10 @@ fn add_file(db: &Db, volume: i64, dir: i64, name: &str, size: i64) {
         dir_id: dir,
         volume_id: volume,
         name: name.into(),
-        ext: name.rsplit_once('.').map(|(_, e)| e.to_string()).unwrap_or_default(),
+        ext: name
+            .rsplit_once('.')
+            .map(|(_, e)| e.to_string())
+            .unwrap_or_default(),
         size,
         mtime: 0,
         blake3: None,
@@ -26,8 +29,10 @@ fn description_and_cover_round_trip() {
     let db = Db::open(&tmp.path().join("t.cdc")).unwrap();
     let id = db.insert_volume("SD Azul", "N35USB128").unwrap();
 
-    db.set_volume_description(id, Some("  Fotos de 2016  ")).unwrap();
-    db.set_volume_cover(id, Some("data:image/jpeg;base64,AAAA")).unwrap();
+    db.set_volume_description(id, Some("  Fotos de 2016  "))
+        .unwrap();
+    db.set_volume_cover(id, Some("data:image/jpeg;base64,AAAA"))
+        .unwrap();
 
     let volume = &db.list_volumes().unwrap()[0];
     assert_eq!(volume.description.as_deref(), Some("Fotos de 2016"));
@@ -67,6 +72,35 @@ fn export_can_be_limited_to_one_volume_and_says_where_each_file_lives() {
 }
 
 #[test]
+fn device_type_and_indicator_colors_round_trip() {
+    let tmp = tempdir().unwrap();
+    let db = Db::open(&tmp.path().join("t.cdc")).unwrap();
+    let id = db.insert_volume("Música-90s", "S1").unwrap();
+
+    db.set_volume_identity(id, Some("optical"), Some(r##"["#ff4d6d","#ffb02e"]"##))
+        .unwrap();
+
+    let volume = &db.list_volumes().unwrap()[0];
+    assert_eq!(volume.media_kind.as_deref(), Some("optical"));
+    assert_eq!(
+        volume.indicator_colors.as_deref(),
+        Some(r##"["#ff4d6d","#ffb02e"]"##)
+    );
+    let meta = db.volume_meta(id).unwrap().unwrap();
+    assert_eq!(meta.media_kind.as_deref(), Some("optical"));
+    assert_eq!(
+        meta.indicator_colors.as_deref(),
+        Some(r##"["#ff4d6d","#ffb02e"]"##)
+    );
+
+    // Clearing the identity is a write, not a missing field.
+    db.set_volume_identity(id, None, None).unwrap();
+    let volume = &db.list_volumes().unwrap()[0];
+    assert_eq!(volume.media_kind, None);
+    assert_eq!(volume.indicator_colors, None);
+}
+
+#[test]
 fn an_old_catalog_gains_the_metadata_columns_on_open() {
     let tmp = tempdir().unwrap();
     let path = tmp.path().join("old.cdc");
@@ -79,17 +113,33 @@ fn an_old_catalog_gains_the_metadata_columns_on_open() {
              indexed_at INTEGER, root_hash TEXT, UNIQUE(label, serial));",
         )
         .unwrap();
-        conn.execute("INSERT INTO volumes(label, serial) VALUES('Viejo','S1')", [])
-            .unwrap();
+        conn.execute(
+            "INSERT INTO volumes(label, serial) VALUES('Viejo','S1')",
+            [],
+        )
+        .unwrap();
     }
 
     let db = Db::open(&path).unwrap();
     let volume = &db.list_volumes().unwrap()[0];
     assert_eq!(volume.label, "Viejo");
     assert_eq!(volume.description, None);
-    db.set_volume_description(volume.id, Some("Sigue funcionando")).unwrap();
+    assert_eq!(volume.media_kind, None);
+    assert_eq!(volume.indicator_colors, None);
+    db.set_volume_description(volume.id, Some("Sigue funcionando"))
+        .unwrap();
+    db.set_volume_identity(volume.id, Some("usb"), Some(r##"["#8fd96a"]"##))
+        .unwrap();
     assert_eq!(
-        db.volume_meta(volume.id).unwrap().unwrap().description.as_deref(),
+        db.volume_meta(volume.id)
+            .unwrap()
+            .unwrap()
+            .description
+            .as_deref(),
         Some("Sigue funcionando")
+    );
+    assert_eq!(
+        db.list_volumes().unwrap()[0].media_kind.as_deref(),
+        Some("usb")
     );
 }

@@ -3,7 +3,7 @@ PRAGMA journal_mode=WAL;
 -- disc: the user writes what it holds, and may attach a small catalog image.
 -- `cover` is a data URL (a downscaled JPEG), so the catalog stays one portable
 -- file that does not depend on the original picture still sitting on disk.
-CREATE TABLE IF NOT EXISTS volumes(id INTEGER PRIMARY KEY, label TEXT NOT NULL, serial TEXT NOT NULL, fs_type TEXT, total_bytes INTEGER, used_bytes INTEGER, media_kind TEXT, indexed_at INTEGER, root_hash TEXT, description TEXT, cover TEXT, UNIQUE(label, serial));
+CREATE TABLE IF NOT EXISTS volumes(id INTEGER PRIMARY KEY, label TEXT NOT NULL, serial TEXT NOT NULL, fs_type TEXT, total_bytes INTEGER, used_bytes INTEGER, media_kind TEXT, indexed_at INTEGER, root_hash TEXT, description TEXT, cover TEXT, indicator_colors TEXT, UNIQUE(label, serial));
 CREATE TABLE IF NOT EXISTS dirs(id INTEGER PRIMARY KEY, volume_id INTEGER NOT NULL REFERENCES volumes(id) ON DELETE CASCADE, parent_id INTEGER REFERENCES dirs(id) ON DELETE CASCADE, name TEXT NOT NULL, path_hash TEXT NOT NULL, mtime INTEGER);
 CREATE INDEX IF NOT EXISTS idx_dirs_vol_parent ON dirs(volume_id, parent_id);
 CREATE TABLE IF NOT EXISTS files(id INTEGER PRIMARY KEY, dir_id INTEGER NOT NULL REFERENCES dirs(id) ON DELETE CASCADE, volume_id INTEGER NOT NULL REFERENCES volumes(id) ON DELETE CASCADE, name TEXT NOT NULL, ext TEXT, size INTEGER NOT NULL, ctime INTEGER, mtime INTEGER, attrs TEXT, blake3 TEXT, sha256 TEXT, container_path TEXT, audio_json TEXT, image_json TEXT);

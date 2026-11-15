@@ -35,6 +35,82 @@ pub async fn pick_scan_folder(app: tauri::AppHandle) -> Result<Option<String>, S
     .map(|p| p.map(|p| p.to_string_lossy().into_owned()))
 }
 
+/// Device kinds the picker can send. Keeping the list at the boundary means an
+/// unknown value can never reach the catalog, whatever the window sends.
+const DEVICE_KINDS: [&str; 8] = [
+    "optical",
+    "usb",
+    "external",
+    "card",
+    "internal",
+    "nas",
+    "image",
+    "encrypted",
+];
+
+/// Normalize the identity fields together: a kind can stand alone, colors
+/// cannot. Orphan colors would have no device to identify, so a missing kind
+/// clears them instead of storing a half-identity.
+fn validate_identity(
+    media_kind: Option<&str>,
+    colors: Option<Vec<String>>,
+) -> Result<(Option<&str>, Option<String>), String> {
+    let kind = media_kind.map(str::trim).filter(|k| !k.is_empty());
+    if let Some(kind) = kind {
+        if !DEVICE_KINDS.contains(&kind) {
+            return Err(format!("Tipo de dispositivo desconocido: {kind}."));
+        }
+    }
+
+    let mut clean = Vec::new();
+    for color in colors.unwrap_or_default() {
+        let hex = color.trim().to_ascii_lowercase();
+        let is_hex = hex.len() == 7
+            && hex.starts_with('#')
+            && hex[1..].chars().all(|c| c.is_ascii_hexdigit());
+        if !is_hex {
+            return Err(format!(
+                "Color no válido: «{color}». Usa seis dígitos hexadecimales, por ejemplo #ffac1c."
+            ));
+        }
+        clean.push(hex);
+    }
+    if clean.len() > 2 {
+        return Err("El indicador admite uno o dos colores.".to_string());
+    }
+    if kind.is_none() {
+        return Ok((None, None));
+    }
+
+    let colors = if clean.is_empty() {
+        None
+    } else {
+        Some(serde_json::to_string(&clean).map_err(|e| e.to_string())?)
+    };
+    Ok((kind, colors))
+}
+
+/// Write (or clear) what a volume is: the kind of device it lives on and the
+/// one or two colors of its indicator. This is catalog metadata only; the
+/// device itself is never touched.
+#[tauri::command]
+pub fn set_volume_identity(
+    db_path: String,
+    volume_id: i64,
+    media_kind: Option<String>,
+    indicator_colors: Option<Vec<String>>,
+) -> Result<(), String> {
+    let (kind, colors) = validate_identity(media_kind.as_deref(), indicator_colors)?;
+    let db = core_db::Db::open(Path::new(&db_path)).map_err(|e| e.to_string())?;
+    let changed = db
+        .set_volume_identity(volume_id, kind, colors.as_deref())
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err("el volumen ya no existe en el catálogo".to_string());
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn pick_volume_cover(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let picked = tauri::async_runtime::spawn_blocking(move || {
@@ -144,7 +220,7 @@ pub fn set_volume_cover(
 
 #[cfg(test)]
 mod tests {
-    use super::flatten_on_backdrop;
+    use super::{flatten_on_backdrop, validate_identity};
 
     #[test]
     fn transparent_pixels_take_the_plate_color() {
@@ -165,5 +241,43 @@ mod tests {
             image::Rgba([255, 0, 0, 255]),
         ));
         assert_eq!(flatten_on_backdrop(&img).get_pixel(0, 0).0, [255, 0, 0]);
+    }
+
+    #[test]
+    fn identity_accepts_one_or_two_colors_and_lowercases_them() {
+        let (kind, colors) =
+            validate_identity(Some("optical"), Some(vec!["#FFAC1C".into()])).unwrap();
+        assert_eq!(kind, Some("optical"));
+        assert_eq!(colors.as_deref(), Some(r##"["#ffac1c"]"##));
+
+        let (_, colors) =
+            validate_identity(Some("nas"), Some(vec!["#35C6D6".into(), "#6a7cf5".into()])).unwrap();
+        assert_eq!(colors.as_deref(), Some(r##"["#35c6d6","#6a7cf5"]"##));
+    }
+
+    #[test]
+    fn identity_can_exist_without_colors() {
+        let (kind, colors) = validate_identity(Some("usb"), None).unwrap();
+        assert_eq!(kind, Some("usb"));
+        assert_eq!(colors, None);
+    }
+
+    #[test]
+    fn identity_rejects_unknown_kinds_and_bad_colors() {
+        assert!(validate_identity(Some("floppy"), None).is_err());
+        assert!(validate_identity(Some("usb"), Some(vec!["red".into()])).is_err());
+        assert!(validate_identity(Some("usb"), Some(vec!["#ffac1".into()])).is_err());
+        assert!(validate_identity(
+            Some("usb"),
+            Some(vec!["#ffac1c".into(), "#000000".into(), "#ffffff".into()])
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn orphan_colors_are_dropped_with_the_kind() {
+        let (kind, colors) = validate_identity(None, Some(vec!["#ffac1c".into()])).unwrap();
+        assert_eq!(kind, None);
+        assert_eq!(colors, None);
     }
 }
