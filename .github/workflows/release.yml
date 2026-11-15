@@ -160,7 +160,7 @@ jobs:
             if ($status -ne 'Valid') { throw "unsigned artifact: $($file.FullName)" }
           }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}-installers
           if-no-files-found: error
