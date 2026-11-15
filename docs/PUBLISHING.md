@@ -18,11 +18,11 @@ git remote add origin https://github.com/neshack/devise-catalog-premium.git
 git push -u origin main
 ```
 
-The default branch should be `main`. The local `master` branch was only the
-initial ancestor and can be deleted once `main` is pushed:
+The default branch should be `main`. Tags are pushed one at a time, because each
+`v*` tag starts a full three-OS release build:
 
 ```bash
-git branch -D master
+git push origin v0.6.0
 ```
 
 ## 3. Protect the default branch
@@ -48,8 +48,8 @@ future work.
 ## 5. Release
 
 ```bash
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.6.0
+git push origin v0.6.0
 ```
 
 The `release` workflow builds `.rpm`, `.deb`, `.AppImage`, `.msi`/`.exe` and
