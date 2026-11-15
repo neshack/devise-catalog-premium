@@ -22,8 +22,13 @@ src-tauri/gen/
 # proyecto; si algún día se quiere compartir con el equipo, quitar esta línea)
 .atl/
 
+# Catálogos locales: contienen los nombres y rutas reales de los archivos del
+# usuario, así que nunca se versionan
+*.cdc
+
 # Playwright
 test-results/
+.playwright-mcp/
 
 # Capturas de la UI (scripts/capture.mjs)
 screenshots/
